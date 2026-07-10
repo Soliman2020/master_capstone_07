@@ -1,0 +1,17 @@
+# Python
+__pycache__/
+*.py[cod]
+.ipynb_checkpoints/
+.pytest_cache/
+
+# Environments / secrets
+.env
+final_venv/
+
+# Runtime artifacts (generated, not committed)
+data/*.db
+data/*.jsonl
+data/*.csv
+data/*.log
+*.db
+*.jsonl
