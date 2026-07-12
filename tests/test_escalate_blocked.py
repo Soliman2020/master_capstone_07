@@ -81,7 +81,7 @@ def test_escalate_high_band_is_blocked():
     review = result.get("review")
     assert review is not None, "reviewer never produced a verdict"
     assert not review.allow, f"gate wrongly allowed low-risk escalation: {review}"
-    assert "constraint_failed:risk_band_score:ge:75" in review.violations, review.violations
+    assert "constraint_failed:risk_band_score:ge:80" in review.violations, review.violations
     # And the tool must NOT have run.
     assert escalated["ran"] is False, "incident.escalate ran despite the policy block"
     # The audit log must record the block.

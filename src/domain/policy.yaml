@@ -45,14 +45,14 @@ actions:
 
   # --- Side-effect: ALWAYS requires a human (the rubric safety rule) ------
   # Escalate a critical incident. The risk_band_score constraint is the
-  # human-review gate: only critical-band (>= 75) incidents may be escalated,
+  # human-review gate: only critical-band (>= 80) incidents may be escalated,
   # and even then a human must approve before any physical response.
   - name: incident.escalate
     side_effect: true
     allow: true
     require_human: true
     constraints:
-      risk_band_score: {ge: 75}     # critical band only
+      risk_band_score: {ge: 80}     # critical band only (must match risk_scorer._band)
     require_fields: [incident_id, risk_band_score]
     block_reason: "Escalation requires a critical-band incident and human approval."
 
@@ -68,10 +68,10 @@ actions:
 
 # Risk-band thresholds (informational; the scorer in fusion/risk_scorer.py
 # is the actual source of truth for band assignment). Documented here so the
-# policy and the scorer stay aligned — the ge:75 above must match the
+# policy and the scorer stay aligned — the ge:80 above must match the
 # critical-band cutoff in risk_scorer._band().
 risk_bands:
   low:      {max_score: 24}
   medium:   {min_score: 25, max_score: 49}
-  high:     {min_score: 50, max_score: 74}
-  critical: {min_score: 75}
+  high:     {min_score: 50, max_score: 79}
+  critical: {min_score: 80}
