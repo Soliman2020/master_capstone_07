@@ -1,0 +1,77 @@
+# P7 security-operations policy.
+# Same schema as P6's policy.yaml (actions + constraints + require_human +
+# block_reason + pii_redaction), so the governance reviewer does not change.
+# The constraint-predicate evaluator (gt/ge/lt/le/in/regex_match) is the
+# SAME mechanism that enforced P6's spend cap; here it enforces the
+# risk-band human-review gate. test_policy_predicate.py exercises both.
+
+version: 1
+domain: security_operations
+
+intake:
+  # SOC intake is event-driven, not OCR-driven like P6. The intake node reads
+  # a staged incident_id from domain_state and surfaces its redacted summary
+  # as the planner's input text. No image / OCR confidence threshold here.
+  source: incidents_parquet
+
+pii_redaction:
+  enabled: true
+  patterns:
+    # Badge ids are internal; names/emails/phones must not reach the planner.
+    - {name: email, regex: '[\w.+-]+@[\w-]+\.[\w.-]+',  replacement: '[EMAIL-REDACTED]'}
+    - {name: phone, regex: '\b\d{10}\b',               replacement: '[PHONE-REDACTED]'}
+    - {name: ssn,   regex: '\b\d{3}-\d{2}-\d{4}\b',     replacement: '[SSN-REDACTED]'}
+
+retention:
+  audit_log_days: 365
+  incident_record_days: 365
+  access_log_days: 90
+  surveillance_metadata_days: 180
+  redacted_only_in_memory: true
+
+actions:
+  # --- Read-only: auto-allowed, no human gate ----------------------------
+  # Fuse surveillance + access into incidents (calls fusion layer). Read-only
+  # in policy terms: it produces incident rows but the reviewer gate is the
+  # point, not a state mutation the operator must approve.
+  - {name: incident.fuse,      side_effect: false, allow: true}
+  # Score an incident's risk (rule layer + optional ML). Read-only.
+  - {name: incident.score,     side_effect: false, allow: true}
+  # Retrieve relevant SOPs / escalation rules (RAG). Read-only.
+  - {name: sop.retrieve,       side_effect: false, allow: true}
+  # Summarize an incident + recommend action, with doc_id citations. Read-only
+  # in policy terms — it generates text, the operator still decides.
+  - {name: incident.summarize, side_effect: false, allow: true}
+
+  # --- Side-effect: ALWAYS requires a human (the rubric safety rule) ------
+  # Escalate a critical incident. The risk_band_score constraint is the
+  # human-review gate: only critical-band (>= 75) incidents may be escalated,
+  # and even then a human must approve before any physical response.
+  - name: incident.escalate
+    side_effect: true
+    allow: true
+    require_human: true
+    constraints:
+      risk_band_score: {ge: 75}     # critical band only
+    require_fields: [incident_id, risk_band_score]
+    block_reason: "Escalation requires a critical-band incident and human approval."
+
+  # --- Hard block: never auto-execute -----------------------------------
+  # Closing a case is a human act of accountability — the operator is the
+  # closer. Mirrors P6's tenant.evict/lockout hard-block pattern: the agent
+  # must surface the request and route it to a human, never auto-resolve.
+  - name: case.close
+    side_effect: true
+    allow: false
+    require_human: true
+    block_reason: "Case closure is outside agent authority; a human analyst must close it."
+
+# Risk-band thresholds (informational; the scorer in fusion/risk_scorer.py
+# is the actual source of truth for band assignment). Documented here so the
+# policy and the scorer stay aligned — the ge:75 above must match the
+# critical-band cutoff in risk_scorer._band().
+risk_bands:
+  low:      {max_score: 24}
+  medium:   {min_score: 25, max_score: 49}
+  high:     {min_score: 50, max_score: 74}
+  critical: {min_score: 75}
