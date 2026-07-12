@@ -1,18 +1,19 @@
 """Wires the governance graph to the SOC domain + runs the copilot on an incident.
 
-Lifts P6's build_graph call verbatim (the governance spine) and injects P7's
-SOC domain: policy.yaml (security_operations), TOOL_REGISTRY (fusion/RAG/
-summarizer wrappers), the event-driven intake node, and SOC prompts.
+Calls the lifted governance spine's `build_graph` and injects the SOC domain:
+policy.yaml (security_operations), TOOL_REGISTRY (fusion/RAG/summarizer
+wrappers), the event-driven intake node, and SOC prompts.
 
 LLM: Groq llama-3.1-8b-instant (free cloud) via a tiny LangChain-compatible
-adapter (GroqChat below). P6 used ChatOllama; we don't have the openai SDK
-installed and don't want to add it, so GroqChat wraps `requests` and exposes
-the one method the governance nodes actually call: ``.invoke(messages)`` ->
-object with a ``.content`` attribute (mirrors langchain AIMessage).
+adapter (GroqChat below). The donor project used ChatOllama; we don't have
+the openai SDK installed and don't want to add it, so GroqChat wraps
+`requests` and exposes the one method the governance nodes actually call:
+``.invoke(messages)`` -> object with a ``.content`` attribute (mirrors
+langchain AIMessage).
 
 Stub mode (no GROQ_API_KEY): llm=None, the graph still runs end-to-end via
 the deterministic stubs in governance/nodes.call_llm. That keeps the agent
-testable without network — the same property P6 had.
+testable without network — the same property the donor had.
 
 CLI:
     python -m project_07_final_synthesis.src.agent.copilot_agent --incident INC-000001
@@ -30,9 +31,9 @@ from dataclasses import dataclass
 _PROJECT = Path(__file__).resolve().parents[2]
 _REPO_ROOT = Path(__file__).resolve().parents[3]
 # Put BOTH the project dir (so `from src...` resolves) AND src/ itself on the
-# path. The src/ entry is what lets us import `governance.*` and `domain.*` the
-# P6 way — keeping the lifted governance package byte-identical (it uses
-# `from governance...` / relative imports, not `from src.governance...`).
+# path. The src/ entry is what lets us import `governance.*` and `domain.*`
+# the donor way — keeping the lifted governance package byte-identical (it
+# uses `from governance...` / relative imports, not `from src.governance...`).
 _SRC = _PROJECT / "src"
 sys.path.insert(0, str(_PROJECT))
 sys.path.insert(0, str(_SRC))
@@ -222,7 +223,7 @@ def run_incident(incident_id: str, use_llm: bool = False) -> dict:
 
 
 def _main() -> None:
-    ap = argparse.ArgumentParser(description="P7 SOC copilot agent (LangGraph + Groq).")
+    ap = argparse.ArgumentParser(description="SOC copilot agent (LangGraph + Groq).")
     ap.add_argument("--incident", required=True, help="incident_id to triage (e.g. INC-000001)")
     ap.add_argument("--llm", action="store_true", help="use Groq LLM (needs GROQ_API_KEY)")
     args = ap.parse_args()

@@ -288,7 +288,7 @@ def main(incident_id: str | None = None) -> None:
 
 if __name__ == "__main__":
     import argparse as _ap
-    _ap_parser = _ap.ArgumentParser(description="P7 LLM summarizer (Groq, citation-guarded).")
+    _ap_parser = _ap.ArgumentParser(description="LLM summarizer (Groq, citation-guarded).")
     _ap_parser.add_argument("--incident", default=None, help="Summarize one incident_id; else all.")
     _args = _ap_parser.parse_args()
     main(incident_id=_args.incident)

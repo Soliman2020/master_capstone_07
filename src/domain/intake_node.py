@@ -1,14 +1,16 @@
 """SOC intake node: stage an incident -> redacted text for the planner.
 
-P6's intake was OCR-driven (image -> pytesseract -> vision fallback). P7's
-is event-driven: the caller puts an ``incident_id`` in ``domain_state`` and
-the intake node reads that incident from the fused incidents parquet,
-redacts PII with the policy's patterns, and surfaces a short text summary
-as ``redacted_text`` for the planner. No OCR, no image path.
+The donor's intake was OCR-driven (image -> pytesseract -> vision fallback).
+This one is event-driven: the caller puts an ``incident_id`` in
+``domain_state`` and the intake node reads that incident from the fused
+incidents parquet, redacts PII with the policy's patterns, and surfaces a
+short text summary as ``redacted_text`` for the planner. No OCR, no image
+path.
 
-Same factory signature as P6's make_intake_node so build_graph wires it the
-same way: ``make_intake_node(policy, audit, llm=None, ...)``. The ``llm`` and
-``ocr_threshold`` args are accepted for signature parity but unused here.
+Same factory signature as the donor's make_intake_node so build_graph
+wires it the same way: ``make_intake_node(policy, audit, llm=None, ...)``.
+The ``llm`` and ``ocr_threshold`` args are accepted for signature parity
+but unused here.
 """
 from __future__ import annotations
 
@@ -53,9 +55,9 @@ def _incident_text(incident_id: str) -> str:
 
 def make_intake_node(policy: Policy, audit: AuditLogger, llm: Any = None,
                      ocr_threshold: int = 65):
-    """Factory: returns the intake node function. Signature mirrors P6 so
-    build_graph wiring is identical. ``llm`` and ``ocr_threshold`` are unused
-    (kept for parity) — P7 intake is event-driven, not OCR-driven.
+    """Factory: returns the intake node function. Signature mirrors the donor
+    so build_graph wiring is identical. ``llm`` and ``ocr_threshold`` are
+    unused (kept for parity) — the SOC intake is event-driven, not OCR-driven.
     """
 
     def intake(state: dict) -> dict:

@@ -1,17 +1,19 @@
-# P7 security-operations policy.
-# Same schema as P6's policy.yaml (actions + constraints + require_human +
-# block_reason + pii_redaction), so the governance reviewer does not change.
-# The constraint-predicate evaluator (gt/ge/lt/le/in/regex_match) is the
-# SAME mechanism that enforced P6's spend cap; here it enforces the
-# risk-band human-review gate. test_policy_predicate.py exercises both.
+# Security-operations policy.
+# Same schema as the donor property-management policy (actions + constraints
+# + require_human + block_reason + pii_redaction), so the governance reviewer
+# does not change. The constraint-predicate evaluator (gt/ge/lt/le/in/
+# regex_match) is the SAME mechanism that enforced the donor's spend cap;
+# here it enforces the risk-band human-review gate. test_policy_predicate.py
+# exercises both.
 
 version: 1
 domain: security_operations
 
 intake:
-  # SOC intake is event-driven, not OCR-driven like P6. The intake node reads
-  # a staged incident_id from domain_state and surfaces its redacted summary
-  # as the planner's input text. No image / OCR confidence threshold here.
+  # SOC intake is event-driven, not OCR-driven like the donor. The intake
+  # node reads a staged incident_id from domain_state and surfaces its
+  # redacted summary as the planner's input text. No image / OCR confidence
+  # threshold here.
   source: incidents_parquet
 
 pii_redaction:
@@ -58,8 +60,9 @@ actions:
 
   # --- Hard block: never auto-execute -----------------------------------
   # Closing a case is a human act of accountability — the operator is the
-  # closer. Mirrors P6's tenant.evict/lockout hard-block pattern: the agent
-  # must surface the request and route it to a human, never auto-resolve.
+  # closer. Mirrors the donor property-management domain's tenant.evict /
+  # lockout hard-block pattern: the agent must surface the request and route
+  # it to a human, never auto-resolve.
   - name: case.close
     side_effect: true
     allow: false

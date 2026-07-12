@@ -1,9 +1,10 @@
 """System prompts for the planner, worker, and summarizer nodes.
 
-SOC analyst voice (P7). The governance nodes don't read these — they just pass
-them to the LLM, so swapping them changes behavior without touching the graph.
-Mirrors P6's domain/prompts.py dataclass shape so the same build_graph wiring
-(planner_system / worker_system / summarizer_system) works unchanged.
+SOC analyst voice. The governance nodes don't read these — they just pass
+them to the LLM, so swapping them changes behavior without touching the
+graph. Mirrors the donor property-management prompts.py dataclass shape so
+the same build_graph wiring (planner_system / worker_system /
+summarizer_system) works unchanged.
 """
 from __future__ import annotations
 from dataclasses import dataclass

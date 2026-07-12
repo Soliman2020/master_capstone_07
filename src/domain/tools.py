@@ -4,9 +4,10 @@ Each tool is a plain function in ``TOOL_REGISTRY`` keyed by the dotted action
 name (matching domain/policy.yaml). The worker dispatch node calls these
 *after* the reviewer approves: ``tool_fn(**intent.args)`` -> payload dict.
 
-This mirrors P6's domain/tools.py contract exactly — only the tools changed:
-P6 read tenants/ledgers from SQLite; P7 reads incidents from Parquet and
-calls the fusion / RAG / summarizer layers already built in src/.
+This mirrors the donor property-management tools.py contract exactly — only
+the tools changed: the donor read tenants/ledgers from SQLite; this one
+reads incidents from Parquet and calls the fusion / RAG / summarizer
+layers already built in src/.
 
 Tools are thin: they delegate to the existing src/fusion, src/rag, and
 src/agent modules. No business logic duplicated here.
@@ -18,8 +19,8 @@ import sys
 from pathlib import Path
 
 # Bootstrap: project dir (so `from src...` resolves) AND src/ itself (so
-# `governance.*` / `domain.*` resolve P6-style, keeping governance verbatim)
-# AND repo root (cwd-relative data paths).
+# `governance.*` / `domain.*` resolve donor-style, keeping governance
+# verbatim) AND repo root (cwd-relative data paths).
 _PROJECT = Path(__file__).resolve().parents[2]
 _REPO_ROOT = Path(__file__).resolve().parents[3]
 _SRC = _PROJECT / "src"
