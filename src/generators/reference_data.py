@@ -3,15 +3,21 @@
 Vertical-slice scale: 1 site, 1 zone, ~10 devices, ~20 users. All
 deterministic from SEED.
 
-Writes four CSVs to data/reference/ (the shared seed layout the root
-CLAUDE.md specifies for cross-project use):
+Writes four CSVs to data/reference/:
   sites.csv, zones.csv, devices.csv, users.csv
 """
 from __future__ import annotations
 import csv
 from pathlib import Path
+import os, sys
 
-from project_07_final_synthesis.src.utils.constants import SEED
+_PROJECT = Path(__file__).resolve().parents[2]
+_REPO_ROOT = Path(__file__).resolve().parents[3]
+sys.path.insert(0, str(_PROJECT))
+sys.path.insert(0, str(_REPO_ROOT))
+os.chdir(_REPO_ROOT)
+
+from src.utils.constants import SEED
 
 # Same RNG instance reused per call. numpy's default_rng
 # from a seed is what gives us reproducible CSVs across runs.

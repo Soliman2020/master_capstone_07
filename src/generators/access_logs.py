@@ -6,17 +6,26 @@ layer's "repeated badge denials" rule needs >=3 denials within 1 hour in
 the same zone, so we seed extra denials for a couple of user_ids to make
 the rule fire deterministically.
 
-Output: project_07_final_synthesis/data/synthetic/access_logs.parquet
+Output: /data/synthetic/access_logs.parquet
 """
 from __future__ import annotations
 from datetime import datetime, timedelta, timezone
 
+from pathlib import Path
+import os, sys
+
 import numpy as np
 import pandas as pd
 
-from project_07_final_synthesis.src.schema import ACCESS_LOGS_COLS, empty_access_logs
-from project_07_final_synthesis.src.utils.constants import SEED
-from project_07_final_synthesis.src.utils.io import write_parquet
+_PROJECT = Path(__file__).resolve().parents[2]
+_REPO_ROOT = Path(__file__).resolve().parents[3]
+sys.path.insert(0, str(_PROJECT))
+sys.path.insert(0, str(_REPO_ROOT))
+os.chdir(_REPO_ROOT)
+
+from src.schema import ACCESS_LOGS_COLS, empty_access_logs
+from src.utils.constants import SEED
+from src.utils.io import write_parquet
 
 # Vertical-slice knobs.
 N_LOGS = 200

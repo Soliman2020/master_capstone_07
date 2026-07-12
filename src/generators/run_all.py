@@ -1,11 +1,25 @@
-"""One-shot generator: reference CSVs -> surveillance_events.parquet -> access_logs.parquet.
-
-Run as:
-    python -m project_07_final_synthesis.src.generators.run_all
 """
-from project_07_final_synthesis.src.generators.reference_data import write_csvs
-from project_07_final_synthesis.src.generators.surveillance_events import main as gen_events
-from project_07_final_synthesis.src.generators.access_logs import main as gen_logs
+One-shot generator: reference CSVs -> surveillance_events.parquet -> access_logs.parquet.
+
+"""
+import os, sys
+from pathlib import Path
+
+#   Two roots on sys.path, cwd at repo root.
+#   parents[2] = project_07_final_synthesis/  -> makes `from src...` work here.
+#   parents[3] = repo root                    -> keeps the generators' internal
+#                `from project_07_final_synthesis.src...` working, unchanged.
+# chdir(repo_root) lands `data/reference/` and the synthetic outputs at the
+
+_PROJECT = Path(__file__).resolve().parents[2]
+_REPO_ROOT = Path(__file__).resolve().parents[3]
+sys.path.insert(0, str(_PROJECT))
+sys.path.insert(0, str(_REPO_ROOT))
+os.chdir(_REPO_ROOT)
+
+from src.generators.reference_data import write_csvs
+from src.generators.surveillance_events import main as gen_events
+from src.generators.access_logs import main as gen_logs
 
 
 def main() -> None:

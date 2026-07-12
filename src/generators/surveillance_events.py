@@ -1,20 +1,29 @@
 """Surveillance events generator.
 
-Vertical-slice scale: ~50 events. Anomaly rate in [0.03, 0.08] per the
-root CLAUDE.md spec (we pick 0.06 to get 3 anomalies on 50 rows so the
+Vertical-slice scale: ~50 events. Anomaly rate in [0.03, 0.08]
+(we pick 0.06 to get 3 anomalies on 50 rows so the
 fusion layer has critical-band material to fire on).
 
-Output: project_07_final_synthesis/data/synthetic/surveillance_events.parquet
+Output: /data/synthetic/surveillance_events.parquet
 """
 from __future__ import annotations
 from datetime import datetime, timedelta, timezone
 
+from pathlib import Path
+import os, sys
+
+_PROJECT = Path(__file__).resolve().parents[2]
+_REPO_ROOT = Path(__file__).resolve().parents[3]
+sys.path.insert(0, str(_PROJECT))
+sys.path.insert(0, str(_REPO_ROOT))
+os.chdir(_REPO_ROOT)
+
 import numpy as np
 import pandas as pd
 
-from project_07_final_synthesis.src.schema import SURVEILLANCE_EVENTS_COLS, empty_surveillance
-from project_07_final_synthesis.src.utils.constants import SEED
-from project_07_final_synthesis.src.utils.io import write_parquet
+from src.schema import SURVEILLANCE_EVENTS_COLS, empty_surveillance
+from src.utils.constants import SEED
+from src.utils.io import write_parquet
 
 # Vertical-slice knobs.
 N_EVENTS = 50
@@ -97,7 +106,7 @@ def generate_surveillance_events(
 
 def main() -> Path:
     """CLI entrypoint: load reference CSVs, generate events, write Parquet."""
-    from project_07_final_synthesis.src.utils.io import read_parquet
+    from src.utils.io import read_parquet
     # Reference CSVs live at data/reference/. Re-read so this script
     # is the single source of truth for the slice.
     sites = pd.read_csv("data/reference/sites.csv")
