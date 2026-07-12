@@ -29,10 +29,13 @@ from src.utils.io import write_parquet
 
 # Vertical-slice knobs.
 N_LOGS = 200
-GRANT_RATE = 0.85          # 85% granted
+# Rates rescaled to sum to 1.0 over granted/denied/invalid only. Tailgate is
+# NOT in the random draw — the single deterministic injection below is the
+# only source of tailgate rows, so we get exactly 1 (was 4: 1 injected + ~3
+# random draws at TAILGATE_RATE=0.02).
+GRANT_RATE = 0.87          # ~87% granted
 DENY_RATE = 0.08           # 8% denied
 INVALID_RATE = 0.05        # 5% invalid (unknown badge)
-TAILGATE_RATE = 0.02       # 2% tailgate (piggybacked entry)
 SIM_DURATION_HOURS = 24
 
 # 1 invalid-badge burst + 1 denial burst, both small. Keeps
@@ -48,15 +51,17 @@ def _log_id(i: int) -> str:
 
 
 def _access_result(rng: np.random.Generator) -> tuple[str, str]:
-    """Pick an access_result and a matching reason."""
+    """Pick an access_result and a matching reason.
+
+    Returns only granted/denied/invalid. Tailgate is injected once
+    deterministically downstream, never sampled here.
+    """
     r = rng.random()
     if r < GRANT_RATE:
         return "granted", "ok"
     if r < GRANT_RATE + DENY_RATE:
         return "denied", str(rng.choice(["expired", "wrong_zone", "revoked"]))
-    if r < GRANT_RATE + DENY_RATE + INVALID_RATE:
-        return "invalid", "unknown_badge"
-    return "tailgate", "forced_door"
+    return "invalid", "unknown_badge"
 
 
 def generate_access_logs(

@@ -27,7 +27,7 @@ from src.utils.io import write_parquet
 
 # Vertical-slice knobs.
 N_EVENTS = 50
-ANOMALY_RATE = 0.06  # 3 anomalies on 50 rows
+N_ANOMALIES = 3  # exact count (was ANOMALY_RATE=0.06 Bernoulli, which rarely hit 3)
 SIM_DURATION_HOURS = 24  # spread events across one day
 CONFIDENCE_BETA_A, CONFIDENCE_BETA_B = 8.0, 2.0  # skews toward high confidence
 
@@ -46,24 +46,31 @@ def generate_surveillance_events(
     zones: pd.DataFrame,
     devices: pd.DataFrame,
     n: int = N_EVENTS,
+    n_anomalies: int = N_ANOMALIES,
 ) -> pd.DataFrame:
     """Build n surveillance events referencing existing sites/zones/devices.
 
-    A small fraction (ANOMALY_RATE) is marked anomaly=True. The rest are
-    routine detections. Anomalies are concentrated in restricted zones and
-    get higher confidence scores (so the fusion rule trips naturally).
+    Exactly n_anomalies rows are marked anomaly=True (deterministic count, not
+    a per-row Bernoulli draw). Anomalies are concentrated in restricted zones
+    and get higher confidence scores (so the fusion rule trips naturally).
     """
     cameras = devices[devices["device_type"] == "camera"].reset_index(drop=True)
     if cameras.empty:
         raise ValueError("No camera devices in reference data; cannot generate surveillance events.")
+    if n_anomalies > n:
+        raise ValueError(f"n_anomalies ({n_anomalies}) > n ({n})")
 
     restricted_zone_ids = set(zones.loc[zones["restricted"], "zone_id"])
     base_time = datetime(2026, 7, 1, 0, 0, 0, tzinfo=timezone.utc)
 
+    # Fix the anomaly COUNT, not a rate. Draw which row indices are
+    # anomalies once, up front -> exactly n_anomalies every run (SEED-fixed).
+    anomaly_idx = set(rng.choice(n, size=n_anomalies, replace=False).tolist())
+
     rows = []
     for i in range(n):
         cam = cameras.iloc[i % len(cameras)]
-        is_anomaly = bool(rng.random() < ANOMALY_RATE)
+        is_anomaly = i in anomaly_idx
         # Anomalies concentrate in restricted zones (intentional: gives
         # the fusion rule something to fire on). Routine detections are
         # spread across the camera's actual zone.
