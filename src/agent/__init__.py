@@ -1,0 +1,1 @@
+"""Agent package: LangGraph copilot agent + tools (summarizer is the first tool)."""
