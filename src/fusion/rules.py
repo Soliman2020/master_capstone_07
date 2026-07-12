@@ -207,11 +207,17 @@ def detect_tailgate_door(
         if nearby.empty:
             continue
         nb = nearby.iloc[0]
+        # The injected tailgate row carries reason="forced_door" too, so it
+        # shows up in BOTH `tails` and `door_events` -> nb can be the same row
+        # as t. Dedupe so the same log_id isn't listed twice in the audit trail.
+        # ponytail: dict.fromkeys preserves order while dropping dups; if a
+        # separate door sensor is added later, both ids naturally come through.
+        linked_log_ids = list(dict.fromkeys([t.log_id, nb["log_id"]]))
         out.append({
             "incident_type": "tailgate_door_activity",
             "rule": "tailgate_door",
             "linked_event_ids": [],
-            "linked_log_ids": [t.log_id, nb["log_id"]],
+            "linked_log_ids": linked_log_ids,
             "incident_start": min(t.log_timestamp, nb["log_timestamp"]),
             "incident_end": max(t.log_timestamp, nb["log_timestamp"]),
             "site_id": t.site_id,

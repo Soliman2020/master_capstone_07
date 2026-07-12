@@ -13,19 +13,27 @@ language-agnostic so it stays testable without an LLM.
 """
 from __future__ import annotations
 from datetime import datetime, timezone
+
 from pathlib import Path
+import os, sys
+
+_PROJECT = Path(__file__).resolve().parents[2]
+_REPO_ROOT = Path(__file__).resolve().parents[3]
+sys.path.insert(0, str(_PROJECT))
+sys.path.insert(0, str(_REPO_ROOT))
+os.chdir(_REPO_ROOT)
 
 import pandas as pd
 
-from project_07_final_synthesis.src.schema import (
+from src.schema import (
     INCIDENTS_COLS,
     empty_incidents,
 )
-from project_07_final_synthesis.src.utils.constants import SEED
-from project_07_final_synthesis.src.utils.io import write_parquet
+from src.utils.constants import SEED
+from src.utils.io import write_parquet, read_parquet
 
-from project_07_final_synthesis.src.fusion.rules import all_candidates
-from project_07_final_synthesis.src.fusion.risk_scorer import score_candidate
+from src.fusion.rules import all_candidates
+from src.fusion.risk_scorer import score_candidate
 
 
 def _dedup_key(c: dict) -> tuple:
@@ -111,8 +119,11 @@ def main() -> Path:
     sites = pd.read_csv("data/reference/sites.csv")
     zones = pd.read_csv("data/reference/zones.csv")
     devices = pd.read_csv("data/reference/devices.csv")
-    events = pd.read_parquet("project_07_final_synthesis/data/synthetic/surveillance_events.parquet")
-    logs = pd.read_parquet("project_07_final_synthesis/data/synthetic/access_logs.parquet")
+    # Synthetic Parquet lives at project_07_final_synthesis/data/synthetic/
+    # (io.DEFAULT_SYNTHETIC_DIR), NOT repo-root/data/synthetic/. Use the
+    # read_parquet helper so the path matches where the generators wrote.
+    events = read_parquet("surveillance_events")
+    logs = read_parquet("access_logs")
 
     df = build_incidents(events, logs, zones, devices)
     path = write_parquet(df, "incidents")
