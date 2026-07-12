@@ -10,8 +10,7 @@ final_venv/
 
 # Runtime artifacts (generated, not committed)
 data/*.db
-data/*.jsonl
 data/*.csv
-data/*.log
+data/*.parquet
+data/synthetic/
 *.db
-*.jsonl
