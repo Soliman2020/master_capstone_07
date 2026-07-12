@@ -14,3 +14,9 @@ data/*.csv
 data/*.parquet
 data/synthetic/
 *.db
+
+# vector store (generated, not committed)
+data/knowledge_base/vector_store/
+
+# Audit logs (generated, not committed)
+data/audit*.jsonl
