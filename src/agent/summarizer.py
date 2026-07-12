@@ -251,16 +251,18 @@ def _row_to_incident(row: pd.Series) -> dict:
     }
 
 
-def main() -> None:
-    ap = argparse.ArgumentParser(description="P7 LLM summarizer (Groq, citation-guarded).")
-    ap.add_argument("--incident", default=None, help="Summarize one incident_id; else all.")
-    args = ap.parse_args()
+def main(incident_id: str | None = None) -> None:
+    """Summarize one or all incidents and write back to incidents.parquet.
 
+    ``incident_id`` None -> all incidents. Kept notebook-callable: argparse
+    lives only in the __main__ guard so a kernel's injected ``-f`` arg
+    doesn't trip SystemExit here.
+    """
     df = _load_incidents()
-    if args.incident:
-        df = df[df["incident_id"] == args.incident]
+    if incident_id:
+        df = df[df["incident_id"] == incident_id]
         if df.empty:
-            print(f"incident {args.incident} not found in incidents.parquet")
+            print(f"incident {incident_id} not found in incidents.parquet")
             return
 
     rows = []
@@ -285,4 +287,8 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    main()
+    import argparse as _ap
+    _ap_parser = _ap.ArgumentParser(description="P7 LLM summarizer (Groq, citation-guarded).")
+    _ap_parser.add_argument("--incident", default=None, help="Summarize one incident_id; else all.")
+    _args = _ap_parser.parse_args()
+    main(incident_id=_args.incident)
