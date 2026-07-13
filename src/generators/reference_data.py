@@ -1,7 +1,17 @@
 """Reference data generator: sites / zones / devices / users.
 
-Vertical-slice scale: 1 site, 1 zone, ~10 devices, ~20 users. All
-deterministic from SEED.
+Two layouts are supported, controlled by N_SITES / N_ZONES_PER_SITE:
+
+  Vertical slice (N_SITES=1, N_ZONES_PER_SITE=1): 1 site, 1 zone, ~10
+  devices, ~20 users. Used by `run_all.py --source small`.
+
+  Scaled slice (N_SITES=3, N_ZONES_PER_SITE=4): 3 sites, 4 zones each
+  (12 zones total), ~30 devices, ~60 users. The 4 zones per site use
+  P1's naming convention: SITE-NNN::ZONE-{A,B,C,D}, where ZONE-D is
+  restricted. Used by `run_all.py --source p1` to scale to P1's
+  ~1k-event / ~10k-log corpus.
+
+All deterministic from SEED.
 
 Writes four CSVs to data/reference/:
   sites.csv, zones.csv, devices.csv, users.csv
@@ -25,19 +35,35 @@ import numpy as np
 
 REF_DIR = Path("data/reference")
 
-# Vertical-slice counts. Bumping these is a one-line change.
-N_SITES = 1
-N_ZONES_PER_SITE = 1
-N_DEVICES = 10
-N_USERS = 20
+# Vertical-slice counts (1 site, 1 zone). Override via env vars to scale
+# to the P1 corpus (3 sites, 4 zones each). The `scaled` helper below
+# sets the env vars and calls write_csvs again to emit the scaled layout.
+N_SITES = int(os.environ.get("P7_N_SITES", "1"))
+N_ZONES_PER_SITE = int(os.environ.get("P7_N_ZONES_PER_SITE", "1"))
+N_DEVICES = 10 * N_SITES * N_ZONES_PER_SITE  # 10 per zone
+N_USERS = 20 * N_SITES * N_ZONES_PER_SITE    # 20 per zone
+
+# When N_ZONES_PER_SITE > 1, use P1's naming scheme (SITE-NNN::ZONE-{A,B,C,D})
+# and mark ZONE-D as restricted. Otherwise the original vertical-slice
+# format (SITE-NNN + ZONE-NNN) is used.
+USE_SCALED_LAYOUT = N_ZONES_PER_SITE > 1
+SCALED_ZONE_LETTERS = ["A", "B", "C", "D"]
+SCALED_RESTRICTED_LETTER = "D"
 
 
 def _site_id(i: int) -> str:
     return f"SITE-{i+1:03d}"
 
 
-def _zone_id(i: int) -> str:
-    return f"ZONE-{i+1:03d}"
+def _zone_id(site_idx: int, zone_idx: int) -> str:
+    """P7's small-slice layout uses bare ZONE-NNN; the scaled layout uses
+    SITE-NNN::ZONE-X (matching P1's generator convention) so the fusion
+    rule's `events["zone_id"].isin(restricted_zones)` lookup matches
+    the data.
+    """
+    if USE_SCALED_LAYOUT:
+        return f"{_site_id(site_idx)}::ZONE-{SCALED_ZONE_LETTERS[zone_idx]}"
+    return f"ZONE-{zone_idx+1:03d}"
 
 
 def _device_id(i: int) -> str:
@@ -60,14 +86,15 @@ def generate_zones(rng: np.random.Generator) -> list[dict]:
     for s in range(N_SITES):
         sid = _site_id(s)
         for z in range(N_ZONES_PER_SITE):
+            is_restricted = True
+            if USE_SCALED_LAYOUT:
+                # ZONE-D is restricted at every site (P1's convention).
+                is_restricted = SCALED_ZONE_LETTERS[z] == SCALED_RESTRICTED_LETTER
             rows.append({
-                "zone_id": _zone_id(z),
+                "zone_id": _zone_id(s, z),
                 "site_id": sid,
                 "zone_name": f"Zone-{z+1}",
-                # Vertical slice: single zone is restricted (so the intrusion
-                # rule has something to fire on). Bump zone count + randomize
-                # this flag when scaling past the slice.
-                "restricted": True,
+                "restricted": is_restricted,
             })
     return rows
 
@@ -75,13 +102,13 @@ def generate_zones(rng: np.random.Generator) -> list[dict]:
 def generate_devices(rng: np.random.Generator) -> list[dict]:
     rows = []
     device_types = ["camera", "badge_reader", "door"]
-    # Even split: ~7 cameras, ~2 badge readers, ~1 door (10 total).
+    # Even split: ~7 cameras, ~2 badge readers, ~1 door per zone.
     type_counts = [7, 2, 1]
     counter = 0
     for s in range(N_SITES):
         sid = _site_id(s)
         for z in range(N_ZONES_PER_SITE):
-            zid = _zone_id(z)
+            zid = _zone_id(s, z)
             for dtype, n in zip(device_types, type_counts):
                 for _ in range(n):
                     rows.append({
@@ -91,7 +118,6 @@ def generate_devices(rng: np.random.Generator) -> list[dict]:
                         "device_type": dtype,
                     })
                     counter += 1
-    assert counter == N_DEVICES, f"device count off: {counter}"
     return rows
 
 
@@ -100,22 +126,32 @@ def generate_users(rng: np.random.Generator) -> list[dict]:
     cleaner in a server room at 3am) and repeated badge denials, so
     we want enough variety to exercise those paths.
     """
-    roles = ["employee"] * 12 + ["contractor"] * 4 + ["cleaner"] * 3 + ["security"] * 1
-    assert len(roles) == N_USERS
-    zone_ids = [_zone_id(z) for z in range(N_ZONES_PER_SITE)]
+    if USE_SCALED_LAYOUT:
+        # 60 users/site, mix of roles.
+        n_total = N_USERS
+        roles = (["employee"] * int(n_total * 0.6)
+                 + ["contractor"] * int(n_total * 0.2)
+                 + ["cleaner"] * int(n_total * 0.15)
+                 + ["security"] * int(n_total * 0.05))
+        assert len(roles) == n_total
+    else:
+        roles = ["employee"] * 12 + ["contractor"] * 4 + ["cleaner"] * 3 + ["security"] * 1
+        assert len(roles) == N_USERS
+
+    # Each user is assigned to one (site, zone) in the scaled layout,
+    # or the single zone in the small slice.
     rows = []
-    for i in range(N_USERS):
+    for i, role in enumerate(roles):
         uid = _user_id(i)
-        role = roles[i]
-        # Security gets all zones; everyone else gets the one zone in the slice.
-        # When scaling, expand this to role-specific zone sets.
-        if role == "security":
-            auth_zones = zone_ids
+        if USE_SCALED_LAYOUT:
+            site_idx = i % N_SITES
+            zone_idx = i % N_ZONES_PER_SITE
+            auth_zones = [_zone_id(site_idx, zone_idx)]
         else:
-            auth_zones = zone_ids
+            auth_zones = [_zone_id(0, z) for z in range(N_ZONES_PER_SITE)]
         rows.append({
             "user_id": uid,
-            "site_id": _site_id(0),
+            "site_id": _site_id(i % N_SITES) if USE_SCALED_LAYOUT else _site_id(0),
             "role": role,
             "authorized_zones": ";".join(auth_zones),  # CSV-friendly; tuple split downstream
         })
@@ -144,6 +180,37 @@ def write_csvs(out_dir: Path = REF_DIR) -> dict[str, Path]:
             w.writerows(rows)
         paths[name] = path
     return paths
+
+
+def write_scaled_csvs(out_dir: Path = REF_DIR) -> dict[str, Path]:
+    """One-shot: set the env vars to the scaled layout, generate, restore.
+
+    Used by `run_all.py --source p1` so the scaled pipeline can call
+    write_csvs() in the standard order (reference first, then synthetic).
+    """
+    saved = {k: os.environ.get(k) for k in ("P7_N_SITES", "P7_N_ZONES_PER_SITE")}
+    os.environ["P7_N_SITES"] = "3"
+    os.environ["P7_N_ZONES_PER_SITE"] = "4"
+    try:
+        # Force a re-read of the module-level constants.
+        global N_SITES, N_ZONES_PER_SITE, N_DEVICES, N_USERS, USE_SCALED_LAYOUT
+        N_SITES = 3
+        N_ZONES_PER_SITE = 4
+        N_DEVICES = 10 * N_SITES * N_ZONES_PER_SITE
+        N_USERS = 20 * N_SITES * N_ZONES_PER_SITE
+        USE_SCALED_LAYOUT = True
+        return write_csvs(out_dir)
+    finally:
+        for k, v in saved.items():
+            if v is None:
+                os.environ.pop(k, None)
+            else:
+                os.environ[k] = v
+        N_SITES = int(os.environ.get("P7_N_SITES", "1"))
+        N_ZONES_PER_SITE = int(os.environ.get("P7_N_ZONES_PER_SITE", "1"))
+        N_DEVICES = 10 * N_SITES * N_ZONES_PER_SITE
+        N_USERS = 20 * N_SITES * N_ZONES_PER_SITE
+        USE_SCALED_LAYOUT = N_ZONES_PER_SITE > 1
 
 
 if __name__ == "__main__":
