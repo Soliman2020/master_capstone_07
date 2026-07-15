@@ -44,6 +44,12 @@ MMR_POOL_N = 10
 # more relevance, less diversity. 0.5 is the textbook default.
 MMR_LAMBDA = 0.5
 
+# Lazy singleton: (model_name, SentenceTransformer). Caching here means
+# the ~3s/150MB model load happens once per process instead of once per
+# retrieval call. Critical for the scaled-slice notebook cell that
+# iterates over ~226 incidents.
+_EMBED_MODEL_CACHE: tuple[str, "SentenceTransformer"] | None = None
+
 # Category routing: maps each fusion incident_type to its KB category.
 # The KB docs share heavy policy vocabulary (badge, human review, retention),
 # so pure semantic similarity mis-ranks tailgate/privacy. The fusion layer
@@ -160,7 +166,13 @@ def retrieve(
 
     # Relevance sim = cosine(query, candidate). We embed the query fresh
     # (normalized) and dot against the normalized candidate embeddings.
-    model = SentenceTransformer(model_name)
+    # Lazy-singleton: SentenceTransformer load is ~3s + ~150MB; reload on
+    # every call would dominate the notebook (one cell now iterates over
+    # the full ~226-row scaled slice).
+    global _EMBED_MODEL_CACHE
+    if _EMBED_MODEL_CACHE is None or _EMBED_MODEL_CACHE[0] != model_name:
+        _EMBED_MODEL_CACHE = (model_name, SentenceTransformer(model_name))
+    model = _EMBED_MODEL_CACHE[1]
     q_emb = model.encode([query], normalize_embeddings=True)[0].astype(np.float32)
     rel_sim = _cos(q_emb, cand_embs)
 
