@@ -1,5 +1,7 @@
 # Project 7 — Industry-Integrated AI Synthesis
 
+![](https://github.com/user-attachments/assets/01a444d9-3650-40f8-ae0c-3d41c1f75262)
+
 **AI Security Operations Copilot** — an agent-led SOC copilot that ingests surveillance events and access-control logs, correlates them into risk-scored incidents, retrieves relevant policies, generates analyst-facing summaries with `doc_id` citations, and escalates critical cases through a non-bypassable human-approval gate.
 
 This is the **final synthesis capstone** (Project 7) of the Udacity AI Mastery Capstone. It integrates methods from **five** prior projects into one industry-focused solution.
