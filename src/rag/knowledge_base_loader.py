@@ -42,7 +42,7 @@ KB_JSONL = Path("project_07_final_synthesis/data/knowledge_base/knowledge_base.j
 VECTOR_STORE_DIR = Path("project_07_final_synthesis/data/knowledge_base/vector_store")
 COLLECTION_NAME = "p7_policy_kb"
 
-# Embedding model: lightweight, sufficient for short policy docs (root CLAUDE.md).
+# Embedding model: lightweight, sufficient for short policy docs.
 EMBED_MODEL_NAME = "all-MiniLM-L6-v2"
 
 
