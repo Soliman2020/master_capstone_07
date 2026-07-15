@@ -11,7 +11,6 @@ Citation guard (validate + one retry, per build decision 2026-07-12):
      that lists the allowed ids explicitly.
   4. If still zero valid ids: mark the incident summary with a
      'needs_review: no valid citation' note so the operator sees it.
-  This enforces the root CLAUDE.md rule: "Hallucinated policies are bugs."
   A smaller free model can invent a KB-XXXXX; the guard catches it.
 
 Auth: reads GROQ_API_KEY from the environment. Set it in your shell:
