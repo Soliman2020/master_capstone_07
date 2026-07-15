@@ -251,19 +251,25 @@ def _row_to_incident(row: pd.Series) -> dict:
     }
 
 
-def main(incident_id: str | None = None) -> None:
+def main(incident_id: str | None = None, max_n: int | None = None) -> None:
     """Summarize one or all incidents and write back to incidents.parquet.
 
-    ``incident_id`` None -> all incidents. Kept notebook-callable: argparse
-    lives only in the __main__ guard so a kernel's injected ``-f`` arg
-    doesn't trip SystemExit here.
+    ``incident_id`` None -> all incidents. ``max_n`` caps the run to the
+    first N rows of the working set (after the incident_id filter);
+    used by the notebook to bound Groq latency on the ~226-row scaled
+    slice (free-tier cold model ~= a few sec per call). Kept
+    notebook-callable: argparse lives only in the __main__ guard so a
+    kernel's injected ``-f`` arg doesn't trip SystemExit here.
     """
-    df = _load_incidents()
+    full = _load_incidents()
+    df = full
     if incident_id:
         df = df[df["incident_id"] == incident_id]
         if df.empty:
             print(f"incident {incident_id} not found in incidents.parquet")
             return
+    if max_n is not None and len(df) > max_n:
+        df = df.head(max_n)
 
     rows = []
     for _, r in df.iterrows():
@@ -273,13 +279,17 @@ def main(incident_id: str | None = None) -> None:
         print(f"{out['incident_id']} [{out['_summary_status']}] "
               f"risk={out['risk_band']} \nsummary: {out['summary_text'][:100]} cites={out['citation_doc_ids'] or '-'}")
 
-    # Write back: update the in-memory incidents frame with the filled cols.
-    upd = df.copy()
+    # Write back: update ONLY the targeted rows in the full incidents frame.
+    # Writing just the filtered df would drop the other 225 rows on the
+    # scaled slice; preserve them.
+    upd = full.copy()
     for out in rows:
-        idx = upd.index[upd["incident_id"] == out["incident_id"]][0]
-        upd.at[idx, "summary_text"] = out["summary_text"]
-        upd.at[idx, "recommended_action"] = out["recommended_action"]
-        upd.at[idx, "citation_doc_ids"] = out["citation_doc_ids"]
+        idx = upd.index[upd["incident_id"] == out["incident_id"]]
+        if len(idx) == 0:
+            continue
+        upd.at[idx[0], "summary_text"] = out["summary_text"]
+        upd.at[idx[0], "recommended_action"] = out["recommended_action"]
+        upd.at[idx[0], "citation_doc_ids"] = out["citation_doc_ids"]
     write_parquet(upd, "incidents")
     n_ok = sum(1 for o in rows if o["_summary_status"] == "ok")
     n_rev = len(rows) - n_ok
