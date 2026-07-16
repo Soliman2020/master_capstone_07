@@ -16,7 +16,7 @@ On the scaled slice (P1's full corpus):
 - **3 sites, 1,000 surveillance events, 9,702 access logs**
 - **226 risk-scored incidents** (210 high + 16 critical)
 - **16 critical escalations** routed through the human-approval gate; the agent never auto-closes
-- **18 tests green** (13 governance/policy + 2 escalate-blocked + 3 P2 threshold-calibration)
+- **34 tests green** (13 governance/policy + 2 escalate-blocked + 3 P2 threshold-calibration + 16 upload-adapter)
 
 The notebook is tested with **Restart & Run All clean (0 errors across 30 cells)**.
 
@@ -60,6 +60,8 @@ surveillance_events (1k) + access_logs (9.7k)
 
 The agent's audit log is hash-chained JSONL; every tool call, reviewer verdict, and human-approval is recorded with `doc_id` traceability for the post-incident review.
 
+**Optional analyst front-end:** the same `run_incident_streaming` entry point is reused by `src/gui/app.py` (Streamlit). The GUI surfaces the same audit chain, the same human-approval gate as a real Grant/Deny button, and an optional "📁 Upload your data" path: drop in two CSVs in any schema, map the columns and enum values via the GUI's `data_editor` widgets, and the copilot runs on the analyst's own data instead of the project corpus. Uploads live in `data/uploads/{uuid}/` and never touch the project's `data/synthetic/` parquet.
+
 ---
 
 ## Quick start (5 minutes)
@@ -86,6 +88,12 @@ project_07_final_synthesis\final_venv\Scripts\python.exe project_07_final_synthe
 ```
 Then open `notebooks/07_integrated_copilot.ipynb` in JupyterLab.
 
+To launch the **Streamlit analyst GUI** (one command, runs in your browser):
+```powershell
+project_07_final_synthesis\final_venv\Scripts\python.exe -m streamlit run project_07_final_synthesis\src\gui\app.py
+```
+Pick an incident in the sidebar, press **▶ Run copilot**. Critical-band incidents show a real **Grant/Deny** gate before the agent dispatches `incident.escalate`. Default is stub mode (deterministic, no API key). Tick "Use LLM" and paste a `gsk_…` key to enable the LLM summarizer; the GUI never reads `.env` for the key. Use the **📁 Upload your data** section to drop in your own surveillance + access CSVs (any schema; map columns and enum values via the GUI's `data_editor` widgets) and the copilot runs on the analyst's own data instead of the project corpus.
+
 ---
 
 ## Project structure
@@ -96,7 +104,8 @@ project_07_final_synthesis/
 │   ├── reference/                          # sites, zones, devices, users (shared seed data)
 │   ├── operational/                        # surveillance_events, access_logs, incidents
 │   ├── knowledge_base/                     # JSONL policies + Chroma vector store
-│   └── synthetic/                          # deterministic Parquet + CSV outputs
+│   ├── synthetic/                          # deterministic Parquet + CSV outputs (project corpus)
+│   └── uploads/                            # per-session CSV uploads (data/uploads/{uuid}/)
 ├── notebooks/
 │   └── 07_integrated_copilot.ipynb         # rubric submission (30 cells)
 ├── src/
@@ -106,15 +115,16 @@ project_07_final_synthesis/
 │   ├── agent/                              # copilot_agent + summarizer (Groq adapter)
 │   ├── governance/                         # lifted from P6 donor (graph_builder, policy, audit, ...)
 │   ├── domain/                             # SOC-specific (policy.yaml, tools, intake, prompts)
+│   ├── gui/                                # Streamlit analyst GUI (one-file app)
 │   ├── schema.py                           # dataclasses + INCIDENTS_COLS etc.
-│   └── utils/                              # constants (SEED=42), io, p1_adapter
-├── tests/                                  # 18 tests (governance + policy + escalate + threshold)
+│   └── utils/                              # constants (SEED=42), io, p1_adapter, upload_adapter
+├── tests/                                  # 34 tests: governance + policy + escalate + threshold + upload-adapter
 ├── reports/
 │   ├── agent_graph.png                     # compiled LangGraph topology
 │   └── Reflective_Synthesis_Paper.pdf
-│   └── Reflective_Synthesis_Paper.md 
+│   └── Reflective_Synthesis_Paper.md
 ├── final_venv/                             # pinned venv (187 packages; see requirements.txt)
-├── requirements.txt                        # pip freeze of final_venv
+├── requirements.txt                        # pip freeze of final_venv (+ streamlit 1.59.2 stack)
 └── README.md                               # this file
 ```
 
@@ -128,8 +138,20 @@ The copilot changes the SOC analyst's job from *triage everything* to *verify wh
 - **Top of queue:** 16 critical-band incidents, each with: a rule provenance (`intrusion_restricted`, etc.), a risk score, a one-paragraph summary grounded in a policy doc, a concrete recommended action, and a `doc_id` citation for the duty-manager review
 - **Escalation:** every critical routes through the human-approval gate; the agent never auto-closes
 - **Audit:** the JSONL hash chain records every tool call, reviewer verdict, and human approval — defensible in a post-incident review
+- **GUI:** the Streamlit analyst surface (`src/gui/app.py`) puts all of the above into one screen: pick an incident in the sidebar, press **▶ Run copilot**, watch the audit trail fill in real time, click **Grant** or **Deny** when a critical incident pauses for sign-off. The GUI reuses the same `run_incident_streaming` entry point the CLI uses — no separate API surface.
 
 The defense line that lands: *"The copilot doesn't replace the operator. It replaces the part of the shift that's a typist, a log-stitcher, and a 3am paragraph-writer. The operator keeps the part that matters: judgment, override, and accountability."*
+
+---
+
+## Human-in-the-loop gate
+
+The `human_approval` node in the governance spine is the **only** place that can require a human's real sign-off, and it does so for `incident.escalate` on critical-band incidents. Two paths exist:
+
+- **CLI / notebook / pytest (default):** the node auto-approves and logs `approver="notebook_operator"` in the audit chain. Reproducible, no UI needed.
+- **GUI (`COPILOT_HUMAN_GATE=1`):** the node calls `langgraph.types.interrupt(...)` and the graph suspends. The GUI shows a Grant/Deny panel; the analyst's decision resumes the graph via `Command(resume=granted)`. The audit chain records `approver="human_via_interrupt"` and `granted=...`. **The audit chain tells you which path fired for any given row.**
+
+The same env-var pattern (`P7_INCIDENTS_DIR`) lets the GUI route the agent's `incident.summarize` / `incident.score` / `incident.fuse` calls to a per-session upload parquet (`data/uploads/{uuid}/incidents.parquet`) when an analyst uploads their own data — so the agent's summarizer is always prompted with the right row, never a coincidentally-matched synthetic one. The CLI / notebook paths leave the env var unset and use the project synthetic/ parquet as before. Two env vars, two opt-in overrides, zero new abstractions.
 
 ---
 
@@ -139,6 +161,8 @@ The defense line that lands: *"The copilot doesn't replace the operator. It repl
 - **Scale:** still synthetic (P1's corpus), not a real SOC environment. Multi-vendor event-stream connectors are the next 12-18 months of work.
 - **Free model:** Groq `llama-3.1-8b-instant` is fast and free but a smaller model. The citation guard is what makes "hallucinated policies are bugs" enforceable on it.
 - **One spine fix:** the multi-step plan-loop bug was latent in the P6 donor (all P6 scenarios were single-step); fixed in `src/governance/graph_builder.py` and `src/governance/nodes.py`.
+- **GUI is local-only:** the Streamlit server has no auth. Fine for an analyst-facing dev tool, not fine for multi-tenant production. The "Use LLM" toggle is off by default and the GUI never reads `.env` for the Groq key — the typed key is the only source. If you expose beyond localhost, add auth (reverse proxy + OAuth is the standard answer) and re-evaluate the trust model for the per-session upload path.
+- **User uploads are scoped to a single GUI session, not multi-tenant.** Uploads live in `data/uploads/{uuid}/` and are visible to anyone with shell access to the same machine. The trust boundary is the local Streamlit server.
 
 ---
 
