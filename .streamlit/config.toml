@@ -1,0 +1,11 @@
+# Streamlit server config for the SOC copilot GUI.
+# server.fileWatcherType = "none" disables Streamlit's hot-reload file
+# watcher, which otherwise walks every module on sys.path and tries to
+# import each one (e.g. transformers.models.*.image_processing_* all
+# import torchvision.transforms.v2 at module top, which we don't
+# install). The warnings are harmless but spam the console; this also
+# stops accidental reloads when editing unrelated files. Trade-off: no
+# in-place hot reload — restart the server after editing app.py.
+[server]
+fileWatcherType = "none"
+headless = true
