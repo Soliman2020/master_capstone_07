@@ -75,9 +75,13 @@ class GroqChat:
     """
 
     def __init__(self, model: str | None = None, temperature: float = 0.2,
-                 max_retries: int = 3, timeout: int = 60):
+                 max_retries: int = 3, timeout: int = 60,
+                 api_key: str | None = None):
+        # `api_key` lets the GUI pass a user-typed key in without writing it
+        # to .env; falls back to the .env loader (via summarizer._api_key)
+        # when not provided.
         from src.agent.summarizer import _api_key  # reuse the same key loader
-        self.api_key = _api_key()
+        self.api_key = api_key or _api_key()
         self.model = model or os.environ.get("GROQ_MODEL", "llama-3.1-8b-instant")
         self.url = (os.environ.get("GROQ_BASE_URL", "https://api.groq.com/openai/v1")
                     + "/chat/completions")
@@ -129,13 +133,18 @@ class GroqChat:
         raise RuntimeError(f"Groq call failed after {self.max_retries} retries: {last}")
 
 
-def build_system(use_llm: bool = False) -> BuiltSystem:
-    """Assemble policy, audit, memory, tools, LLM (optional), and the graph."""
+def build_system(use_llm: bool = False, api_key: str | None = None) -> BuiltSystem:
+    """Assemble policy, audit, memory, tools, LLM (optional), and the graph.
+
+    `api_key` is forwarded to `GroqChat`; when provided, it overrides the
+    `GROQ_API_KEY` env var (so a GUI can pass a user-typed key without
+    writing to .env).
+    """
     DATA_DIR.mkdir(parents=True, exist_ok=True)
     policy = Policy.from_yaml(_PROJECT / "src" / "domain" / "policy.yaml")
     audit = AuditLogger(DATA_DIR / "audit.jsonl")
     memory = SessionScratchpad(DATA_DIR / "scratchpad.db")
-    llm = GroqChat() if use_llm else None
+    llm = GroqChat(api_key=api_key) if use_llm else None
     intake = make_intake_node(policy, audit, llm=llm)
     graph = build_graph(
         policy=policy,
@@ -188,7 +197,8 @@ def _intake_with_plan(incident: dict, base_intake):
     return intake
 
 
-def run_incident(incident_id: str, use_llm: bool = False) -> dict:
+def run_incident(incident_id: str, use_llm: bool = False,
+                 api_key: str | None = None) -> dict:
     """Run the copilot on one incident. Returns the final state snapshot."""
     from src.utils.io import read_parquet
     df = read_parquet("incidents")
@@ -198,7 +208,7 @@ def run_incident(incident_id: str, use_llm: bool = False) -> dict:
     incident = row.iloc[0].to_dict()
     incident["risk_score"] = int(incident["risk_score"])
 
-    sys_ = build_system(use_llm=use_llm)
+    sys_ = build_system(use_llm=use_llm, api_key=api_key)
     # In stub mode: inject a scripted plan so the run is deterministic without
     # an LLM. With --llm: use the plain intake and let the planner generate the
     # plan from the staged incident text via Groq (the real agent path).
@@ -223,7 +233,7 @@ def run_incident(incident_id: str, use_llm: bool = False) -> dict:
 
 
 def run_incident_streaming(incident_id: str, use_llm: bool = False,
-                            on_human_approval=None):
+                            on_human_approval=None, api_key: str | None = None):
     """Stream the copilot run with a real human-in-the-loop gate.
 
     Builds the graph with COPILOT_HUMAN_GATE=1, an InMemorySaver, and
@@ -261,7 +271,7 @@ def run_incident_streaming(incident_id: str, use_llm: bool = False,
     prev = _os.environ.get("COPILOT_HUMAN_GATE")
     _os.environ["COPILOT_HUMAN_GATE"] = "1"
     try:
-        sys_ = build_system(use_llm=use_llm)
+        sys_ = build_system(use_llm=use_llm, api_key=api_key)
         if use_llm:
             intake = make_intake_node(sys_.policy, sys_.audit, llm=sys_.llm)
         else:

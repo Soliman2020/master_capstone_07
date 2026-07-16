@@ -143,15 +143,31 @@ def main() -> None:
         use_llm = st.checkbox(
             "Use LLM (Groq llama-3.1-8b-instant)", value=False,
             help="Off = deterministic stub mode (reproducible, no API key). "
-                 "On = calls Groq using GROQ_API_KEY from .env (non-reproducible).",
+                 "On = calls Groq using the key you type below. The .env "
+                 "file is NOT consulted in the GUI; the typed key is the "
+                 "only source.",
             key="use_llm",
         )
+        # When Use LLM is on, show a password field for the Groq API key.
+        # The typed key is the ONLY source — the GUI never reads .env.
+        # The key is held in session state, never written to disk, and
+        # never logged. If the field is empty, we refuse the LLM run.
+        user_api_key: str | None = None
         if use_llm:
-            import os
-            from dotenv import load_dotenv
-            load_dotenv(_PROJECT / ".env")
-            if not os.environ.get("GROQ_API_KEY"):
-                st.warning("GROQ_API_KEY not set in .env — LLM run will fail.")
+            user_api_key = st.text_input(
+                "Groq API key",
+                value="",
+                type="password",
+                key="user_api_key",
+                placeholder="paste gsk_...",
+                help="Free key at https://console.groq.com/keys. "
+                     "Stored only in this session; not written to .env.",
+            )
+            if user_api_key:
+                st.caption("✅ Using the key you typed.")
+            else:
+                st.warning("No key typed — LLM run will not start. "
+                           "Tick the checkbox off for stub mode, or type a key.")
             st.caption("⚠️ LLM mode is non-reproducible and uses Groq quota.")
         run = st.button("▶ Run copilot", type="primary", key="run_btn")
 
@@ -216,9 +232,20 @@ def main() -> None:
             granted = st.session_state.get(_SS_HUMAN_GRANT)
             return bool(granted)
 
+        # Refuse the LLM run if the user ticked Use LLM but didn't type
+        # a key. The GUI never reads .env, so an empty field means we
+        # have no key at all — better to fail loudly here than to send
+        # an empty Authorization header to Groq.
+        if use_llm and not (user_api_key and user_api_key.strip()):
+            st.error("Use LLM is on but no Groq API key was typed. "
+                     "Tick 'Use LLM' off for stub mode, or type a key.")
+            st.session_state.pop(_SS_GEN, None)
+            return
+
         gen = run_incident_streaming(
             incident_id, use_llm=use_llm,
             on_human_approval=_on_human_approval,
+            api_key=user_api_key,
         )
         st.session_state[_SS_GEN] = gen
 
