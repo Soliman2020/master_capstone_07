@@ -177,15 +177,36 @@ def make_summarizer_node(llm, prompts, memory: SessionScratchpad, audit: AuditLo
 
 def make_human_approval_node(audit: AuditLogger):
     def human_approval(state: AgentState) -> dict:
-        # In a real UI this suspends via langgraph interrupt and waits for a human.
-        # For the notebook/CLI we auto-approve and log it, so the graph can run
-        # end-to-end; the report documents that a production deployment would
-        # block here until a human responds.
         intent: ActionIntent = state["current_action"]
+        review = state.get("review")
+
+        # When COPILOT_HUMAN_GATE=1, suspend via langgraph.interrupt and
+        # wait for a human to resume with Command(resume=granted_bool).
+        # Otherwise auto-approve so CLI / notebook runs stay headless.
+        import os as _os
+        if _os.environ.get("COPILOT_HUMAN_GATE") == "1":
+            from langgraph.types import interrupt
+            decision = interrupt({
+                "action": intent.action,
+                "args": intent.args,
+                "reason": getattr(review, "reason", "") if review else "",
+                "turn_id": state["turn_id"],
+            })
+            granted = bool(decision)
+            audit.log_human_approval(turn_id=state["turn_id"], action=intent.action,
+                                     approver="human_via_interrupt", granted=granted,
+                                     note="via langgraph interrupt (COPILOT_HUMAN_GATE=1)")
+            if review:
+                review.allow = granted
+                review.require_human = False
+            return {"review": review}
+
+        # Default: auto-approve and log it so the graph runs end-to-end in
+        # the notebook/CLI. The report documents that a production deployment
+        # would block here until a human responds.
         audit.log_human_approval(turn_id=state["turn_id"], action=intent.action,
                                  approver="notebook_operator", granted=True,
                                  note="auto-approved in demo mode")
-        review = state.get("review")
         if review:
             review.allow = True
         return {"review": review}
