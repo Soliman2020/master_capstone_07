@@ -38,7 +38,16 @@ from src.rag.retriever import retrieve_for_incident
 # --- helpers ----------------------------------------------------------------
 
 def _load_incidents() -> pd.DataFrame:
-    """Read the fused incidents parquet (fusion output)."""
+    """Read the fused incidents parquet (fusion output).
+
+    Honors the per-session `P7_INCIDENTS_DIR` env var when set, so the
+    GUI's upload flow can override the project synthetic/ path. The
+    CLI / notebook paths leave the env var unset and fall through to
+    the default synthetic/ location.
+    """
+    in_dir = os.environ.get("P7_INCIDENTS_DIR")
+    if in_dir:
+        return read_parquet("incidents", in_dir=in_dir)
     return read_parquet("incidents")
 
 
