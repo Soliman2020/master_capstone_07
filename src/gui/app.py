@@ -619,6 +619,11 @@ def main() -> None:
     state = run_state.get("last_state") or {}
 
     if run_state["phase"] == "human_decision":
+        # The agent paused at human_approval. Render the gate first
+        # (most prominent) but DO NOT stop the script — the user
+        # should still see the last tool result, the analyst summary,
+        # and the audit trail that led to this decision. Without
+        # those, the Grant/Deny choice is made in a vacuum.
         pending = run_state["pending"] or {}
         action = pending.get("action", "unknown")
         args = pending.get("args", {})
@@ -638,17 +643,23 @@ def main() -> None:
             if st.button("🚫 Deny", key="deny_btn"):
                 st.session_state[_SS_HUMAN_GRANT] = False
                 st.rerun()
-        st.stop()
-
-    rev = state.get("review")
-    if rev and not rev.allow:
-        st.error(f"🚫 BLOCKED: {rev.reason}")
-    elif rev and getattr(rev, "require_human", False) and getattr(rev, "allow", False):
-        # Critical path that was auto-approved (shouldn't happen with
-        # COPILOT_HUMAN_GATE=1, but reported faithfully if it does).
-        st.warning("✋ Escalation auto-approved (no human gate).")
+        # Note: we render the verdict banner + last tool + summary +
+        # audit trail AFTER the gate so the user has full context.
+        # The verdict banner shows "in progress" for the human-decision
+        # phase (no final status yet), then a "ready to resume" hint.
+        st.info("Copilot is paused. The panels below show the state "
+                "up to this point; the agent will continue after your "
+                "decision.")
     else:
-        st.success(f"✅ Status: {state.get('status', 'done')}")
+        rev = state.get("review")
+        if rev and not rev.allow:
+            st.error(f"🚫 BLOCKED: {rev.reason}")
+        elif rev and getattr(rev, "require_human", False) and getattr(rev, "allow", False):
+            # Critical path that was auto-approved (shouldn't happen with
+            # COPILOT_HUMAN_GATE=1, but reported faithfully if it does).
+            st.warning("✋ Escalation auto-approved (no human gate).")
+        else:
+            st.success(f"✅ Status: {state.get('status', 'done')}")
 
     tr = state.get("tool_result")
     if tr:
