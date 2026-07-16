@@ -198,10 +198,18 @@ def _intake_with_plan(incident: dict, base_intake):
 
 
 def run_incident(incident_id: str, use_llm: bool = False,
-                 api_key: str | None = None) -> dict:
-    """Run the copilot on one incident. Returns the final state snapshot."""
+                 api_key: str | None = None,
+                 incidents_dir: str | Path | None = None) -> dict:
+    """Run the copilot on one incident. Returns the final state snapshot.
+
+    `incidents_dir` overrides the default incidents parquet location;
+    used by the GUI when running on user-uploaded data. None (default)
+    keeps the project synthetic/ path.
+    """
     from src.utils.io import read_parquet
-    df = read_parquet("incidents")
+    df = (read_parquet("incidents", in_dir=incidents_dir)
+          if incidents_dir is not None
+          else read_parquet("incidents"))
     row = df[df["incident_id"] == incident_id]
     if row.empty:
         raise ValueError(f"incident {incident_id} not found")
@@ -233,7 +241,8 @@ def run_incident(incident_id: str, use_llm: bool = False,
 
 
 def run_incident_streaming(incident_id: str, use_llm: bool = False,
-                            on_human_approval=None, api_key: str | None = None):
+                            on_human_approval=None, api_key: str | None = None,
+                            incidents_dir: str | Path | None = None):
     """Stream the copilot run with a real human-in-the-loop gate.
 
     Builds the graph with COPILOT_HUMAN_GATE=1, an InMemorySaver, and
@@ -258,7 +267,9 @@ def run_incident_streaming(incident_id: str, use_llm: bool = False,
     import os as _os
 
     from src.utils.io import read_parquet
-    df = read_parquet("incidents")
+    df = (read_parquet("incidents", in_dir=incidents_dir)
+          if incidents_dir is not None
+          else read_parquet("incidents"))
     row = df[df["incident_id"] == incident_id]
     if row.empty:
         raise ValueError(f"incident {incident_id} not found")
@@ -270,6 +281,16 @@ def run_incident_streaming(incident_id: str, use_llm: bool = False,
     # leaves it unset and falls through to auto-approve.
     prev = _os.environ.get("COPILOT_HUMAN_GATE")
     _os.environ["COPILOT_HUMAN_GATE"] = "1"
+    
+    # Same env-var pattern for the per-session incidents dir. The tools
+    # (`src.domain.tools._load_incidents`) read this so the agent's
+    # incident.summarize / incident.score calls hit the user's upload
+    # parquet, not the project synthetic/ one. Without this, a
+    # coincidental incident_id match (e.g. INC-000009 in both parquets)
+    # would silently mix data.
+    prev_dir = _os.environ.get("P7_INCIDENTS_DIR")
+    if incidents_dir is not None:
+        _os.environ["P7_INCIDENTS_DIR"] = str(incidents_dir)
     try:
         sys_ = build_system(use_llm=use_llm, api_key=api_key)
         if use_llm:
@@ -396,6 +417,10 @@ def run_incident_streaming(incident_id: str, use_llm: bool = False,
             _os.environ.pop("COPILOT_HUMAN_GATE", None)
         else:
             _os.environ["COPILOT_HUMAN_GATE"] = prev
+        if prev_dir is None:
+            _os.environ.pop("P7_INCIDENTS_DIR", None)
+        else:
+            _os.environ["P7_INCIDENTS_DIR"] = prev_dir
 
 
 def _main() -> None:
