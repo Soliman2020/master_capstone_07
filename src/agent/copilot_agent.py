@@ -222,6 +222,172 @@ def run_incident(incident_id: str, use_llm: bool = False) -> dict:
     return final
 
 
+def run_incident_streaming(incident_id: str, use_llm: bool = False,
+                            on_human_approval=None):
+    """Stream the copilot run with a real human-in-the-loop gate.
+
+    Builds the graph with COPILOT_HUMAN_GATE=1, an InMemorySaver, and
+    a thread_id so langgraph.interrupt can suspend on the
+    `human_approval` node. The generator yields:
+
+        ("pending", pending_dict)
+            The agent paused for a human decision. The GUI should ask
+            the analyst and call resume(granted) (or deny) to continue.
+        ("step", state_dict, tool_name)
+            A plan step completed; the GUI can update its live view.
+        ("done", final_state)
+            The graph reached END; nothing more to do.
+
+    Pass `on_human_approval` to drive the gate programmatically; the GUI
+    sets it to a closure that reads the analyst's button click.
+    The CLI / notebook path keeps using `run_incident` (auto-approves);
+    COPILOT_HUMAN_GATE is only set for this GUI/streaming path.
+    """
+    from langgraph.checkpoint.memory import InMemorySaver
+    from langgraph.types import Command, interrupt
+    import os as _os
+
+    from src.utils.io import read_parquet
+    df = read_parquet("incidents")
+    row = df[df["incident_id"] == incident_id]
+    if row.empty:
+        raise ValueError(f"incident {incident_id} not found")
+    incident = row.iloc[0].to_dict()
+    incident["risk_score"] = int(incident["risk_score"])
+
+    # Enable the real interrupt path in make_human_approval_node. We only
+    # set this for the streaming call; the headless `run_incident` path
+    # leaves it unset and falls through to auto-approve.
+    prev = _os.environ.get("COPILOT_HUMAN_GATE")
+    _os.environ["COPILOT_HUMAN_GATE"] = "1"
+    try:
+        sys_ = build_system(use_llm=use_llm)
+        if use_llm:
+            intake = make_intake_node(sys_.policy, sys_.audit, llm=sys_.llm)
+        else:
+            intake = _intake_with_plan(
+                incident, make_intake_node(sys_.policy, sys_.audit, llm=sys_.llm))
+        checkpointer = InMemorySaver()
+        graph = build_graph(
+            policy=sys_.policy, tool_registry=domain_tools.TOOL_REGISTRY,
+            tool_specs=[],
+            audit=sys_.audit, llm=sys_.llm, memory=sys_.memory,
+            intake_fn=intake, prompts=DEFAULT_PROMPTS,
+            checkpointer=checkpointer,
+        )
+        thread_id = f"gui-{incident_id}"
+        cfg = {"configurable": {"thread_id": thread_id},
+               "recursion_limit": 25}
+        init_state = {
+            "user_id": "analyst-1",
+            "turn_id": f"turn-{incident_id}",
+            "messages": [],
+            "domain_state": {"incident_id": incident_id},
+        }
+
+        # Run the graph. langgraph 1.2 stops the stream cleanly when a
+        # node calls interrupt() — the suspension is visible via
+        # graph.get_state(cfg).next, not via an exception. Older
+        # versions raised GraphInterrupt; we keep the try/except for
+        # back-compat, then re-check with get_state() either way.
+        state = None
+        granted_holder = {"v": None}
+
+        def _ask():
+            granted_holder["v"] = bool(on_human_approval and on_human_approval(
+                {"action": "pending", "args": {}}))
+            return granted_holder["v"]
+
+        try:
+            for event in graph.stream(init_state, config=cfg):
+                # Each event is {node_name: delta}; emit a step event so
+                # the GUI can update incrementally.
+                for _node, delta in (event.items() if isinstance(event, dict) else []):
+                    if isinstance(delta, dict):
+                        state = (state or init_state) | delta
+                        tr = delta.get("tool_result")
+                        yield ("step", state, getattr(tr, "tool", None) if tr else None)
+        except Exception as _e:
+            from langgraph.errors import GraphInterrupt, NodeInterrupt  # type: ignore
+            if not isinstance(_e, (GraphInterrupt, NodeInterrupt)):
+                raise
+
+        if not (graph.get_state(cfg).next or ()):
+            # The stream ended AND the graph has no pending next nodes:
+            # that means it reached END without any human gate firing.
+            final = graph.get_state(cfg).values
+            yield ("done", final)
+            return
+
+        # Graph is suspended at a node (typically human_approval when
+        # COPILOT_HUMAN_GATE=1). Read the pending action from the snapshot.
+        snap = graph.get_state(cfg)
+        pending_action = (snap.values.get("current_action").action
+                          if snap.values.get("current_action") else "unknown")
+        pending_args = (snap.values.get("current_action").args
+                        if snap.values.get("current_action") else {})
+        review = snap.values.get("review")
+        yield ("pending", {
+            "action": pending_action,
+            "args": pending_args,
+            "review_reason": getattr(review, "reason", "") if review else "",
+        })
+
+        # Wait for the human's decision. The GUI sets it via the closure
+        # passed in as on_human_approval; the closure is invoked here.
+        granted = bool(on_human_approval and on_human_approval({
+            "action": pending_action,
+            "args": pending_args,
+            "review_reason": getattr(review, "reason", "") if review else "",
+        }))
+
+        # Resume the graph with the human's decision. Any further plan
+        # steps (including more human-approval gates) play out the same
+        # way: we may hit another interrupt, in which case we re-prompt.
+        while True:
+            try:
+                for event in graph.stream(Command(resume=granted), config=cfg):
+                    for _node, delta in (event.items()
+                                         if isinstance(event, dict) else []):
+                        if isinstance(delta, dict):
+                            state = (state or snap.values) | delta
+                            tr = delta.get("tool_result")
+                            yield ("step", state,
+                                   getattr(tr, "tool", None) if tr else None)
+                break
+            except Exception as _e:
+                from langgraph.errors import GraphInterrupt, NodeInterrupt  # type: ignore
+                if isinstance(_e, (GraphInterrupt, NodeInterrupt)):
+                    # Another human-approval gate. Re-yield pending and
+                    # ask the GUI for another decision.
+                    snap = graph.get_state(cfg)
+                    pa = (snap.values.get("current_action").action
+                          if snap.values.get("current_action") else "unknown")
+                    par = (snap.values.get("current_action").args
+                           if snap.values.get("current_action") else {})
+                    rv = snap.values.get("review")
+                    yield ("pending", {
+                        "action": pa,
+                        "args": par,
+                        "review_reason": getattr(rv, "reason", "") if rv else "",
+                    })
+                    granted = bool(on_human_approval and on_human_approval({
+                        "action": pa,
+                        "args": par,
+                        "review_reason": getattr(rv, "reason", "") if rv else "",
+                    }))
+                    continue
+                raise
+
+        final = graph.get_state(cfg).values
+        yield ("done", final)
+    finally:
+        if prev is None:
+            _os.environ.pop("COPILOT_HUMAN_GATE", None)
+        else:
+            _os.environ["COPILOT_HUMAN_GATE"] = prev
+
+
 def _main() -> None:
     ap = argparse.ArgumentParser(description="SOC copilot agent (LangGraph + Groq).")
     ap.add_argument("--incident", required=True, help="incident_id to triage (e.g. INC-000001)")
