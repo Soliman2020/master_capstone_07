@@ -175,17 +175,36 @@ flowchart LR
 
 ### Assumptions and tradeoffs
 
-Stub mode is reproducible; `--llm` mode is not (Groq generates the plan and may skip steps —
-acceptable, since the summarizer tool retrieves policies internally so citations still land).
-The Groq free tier caps scale; the scaled slice (226 incidents) is the rubric default, with a
-small slice (4 incidents) kept for fast iteration. ML is deferred to keep the rule layer
-auditable and to respect P3<sup>8</sup> leakage discipline.
+- **Stub vs `--llm` mode.** Stub mode is reproducible; `--llm` mode is not (Groq generates
+  the plan and may skip steps — acceptable, since the summarizer tool retrieves policies
+  internally so citations still land). The notebook defaults to stub so reviewers see a
+  clean end-to-end run; `--llm` is the live demo.
+- **Scale and free-tier ceiling.** The Groq free tier caps scale; the scaled slice
+  (226 incidents) is the rubric default, with a small slice (4 incidents) kept for fast
+  iteration. The pipeline is sliced, not retrained, so the cap is on calls, not on
+  capability.
+- **ML deferred.** Rules are kept first-class so the risk score is auditable end-to-end
+  and respects P3<sup>8</sup> leakage discipline (split by `site` + contiguous
+  `time_window`, not shuffled rows). A future ML scorer is a swap-in behind the same
+  `risk_scorer.py` interface, not a redesign.
+- **Chroma + `all-MiniLM-L6-v2` over a bigger stack.** A 5-doc policy KB does not pay
+  for BM25, a cross-encoder, or a query-rewrite LLM. Category routing + MMR + the
+  citation guard do the work the 2026 production RAG recipe would otherwise spend
+  model size on.
 
 ### Boundaries of capability and responsibility
 
 `case.close` is a **hard block** (`allow: false`) — the agent never auto-closes; closure is a
 human act of accountability. `incident.escalate` requires human approval at `risk_band_score
 ≥ 80`; high-band (75–79) cannot escalate (stricter than the prior 75-vs-80 mismatch).
+
+### Reproduction
+
+The system runs end-to-end on Windows + PowerShell from the repo root: generate →
+fuse → build the KB → retrieve → summarize → run the agent. `requirements.txt` pins the
+runtime (pandas, numpy, pyarrow, chromadb, sentence-transformers, langgraph, requests,
+python-dotenv, PyYAML, pytest, jupyterlab); `GROQ_API_KEY` in `.env` is the only secret
+needed for `--llm` mode. `pytest` reports **34/34 green**.
 
 ---
 
@@ -242,23 +261,22 @@ per caller.
 
 **Limitations / tradeoffs.** The 0.85 threshold misses ~42% of anomalies — a known ceiling
 documented for operators. The free 8B model occasionally invents kwarg names (handled by an
-arg-filtering wrapper). The audit chain carries a pre-existing cosmetic break at seq 313,
-surfaced honestly in the GUI. LLM mode is non-deterministic; stub mode is the reproducible
-citation.
+arg-filtering wrapper). The audit log carries an unrepaired break at an early sequence
+number, surfaced honestly in the GUI rather than silently re-hashed. LLM mode is
+non-deterministic; stub mode is the reproducible citation.
 
 ---
 
 ## 6. Professional Relevance
 
-This work tried to do readiness for real-world AI roles in three ways. First, **system-level
-thinking**: it integrates five prior projects into one coherent pipeline rather than a
-collection of notebooks. Second, **responsible engineering under constraints**: it operates
-on a free-tier model and a small KB, and responds to those constraints with engineering
-(category routing, citation guard, arg filtering) rather than a bigger budget. Third,
-**reuse with discipline**: the governance spine is lifted, fixed, de-labeled, and guarded by
-a no-domain-imports test — the kind of principled code reuse that scales in a team. The
-operator keeps the part that matters: **judgment, override, and accountability** — the system
-compresses signal and cites its sources; the human makes the call.
+This work demonstrates readiness for real-world AI roles in three ways. First,
+**system-level thinking**: five prior projects compose into one pipeline, not a
+collection of notebooks. Second, **responsible engineering under constraints**:
+a free-tier model and a 5-doc KB get category routing, a citation guard, and arg
+filtering — engineering substitutes for a bigger budget. Third, **reuse with
+discipline**: the governance spine is lifted, fixed, de-labeled, and guarded by a
+no-domain-imports test. The operator keeps the part that matters — judgment,
+override, accountability — while the system compresses signal and cites its sources.
 
 ---
 
