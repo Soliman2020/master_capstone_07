@@ -25,7 +25,7 @@ citations and a recommended action, and routes the 16 critical ones through a hu
 gate.
 
 Constraints and risks specific to this industry: the data is surveillance/access data (PII
-risk, scope-minimization and retention obligations), the outputs drive security actions on
+risk<sup>1</sup>, scope-minimization and retention obligations), the outputs drive security actions on
 real people (suspend a badge, dispatch security), and a wrong escalation is costly in both
 directions — a missed critical is a breach, a false alarm erodes trust. The system's
 responsibility boundary is therefore narrow: **it recommends and surfaces; it never closes
@@ -37,33 +37,35 @@ a case and never auto-escalates.**
 
 This system integrates **five** prior capstone projects, each contributing a distinct layer:
 
-- **P1 — Reproducible Data Workflows (data foundation).** The copilot runs on P1's corpus. 
-  `p1_pipeline.py` reads P1's `data/raw/*.parquet` (1,000 surveillance events / ~9,700 access 
+- **P1 — Reproducible Data Workflows (data foundation).**<sup>2</sup> The copilot runs on P1's corpus. 
+  `p1_pipeline.py` reads P1's `data/raw/*.parquet`<sup>3</sup> (1,000 surveillance events / ~9,700 access 
   logs / 3 sites) through `p1_adapter.py`, which normalizes P1's dirtier schema (no `anomaly` 
   flag, different `access_result` values, 298 sentinel rows, lowercase zone variants) 
   into P7's schema. P1's reproducibility discipline (seeded generation, Parquet I/O) is inherited directly.
-- **P2 — Statistical Calibration (threshold contract).** P2 ran chi-square and t-test
+- **P2 — Statistical Calibration (threshold contract).**<sup>4</sup> P2 ran chi-square<sup>5</sup> 
+  and t-test <sup>6</sup>
   hypothesis tests and explicitly warned that the fusion confidence threshold (0.85) "should
   be validated against precision/recall before deployment." `tests/test_threshold_calibration.py`
   re-runs both tests on the slice the copilot actually runs against. The validation **became a
   hard finding**, not a caveat: recall@0.85 is only ~58% on the scaled slice, and the t-test
   effect strengthens (Cohen's d 0.21 → 1.50). P2's caution is now an asserted contract.
-- **P3 — Applied ML (rules-first, leakage discipline).** The fusion layer is rules-first, not
+- **P3 — Applied ML (rules-first, leakage discipline).**<sup>7</sup> The fusion layer is rules-first, not
   ML — a direct P3 lesson. Per-rule base risk + size/confidence bonuses, capped at 100, with
   the originating rule recorded on each incident (`_rule` column) for auditability. ML is
   deliberately deferred, and P3's leakage discipline (split by `site` + contiguous
   `time_window`, not shuffled rows) is recorded as the constraint any future ML upgrade must
   obey.
-- **P5 — Generative AI (genre reference for summarizer prose).** The summarizer's analyst-voice
+- **P5 — Generative AI (genre reference for summarizer prose).**<sup>8</sup> The summarizer's analyst-voice
   prompt and the citation-grounding pattern come from the P5 generative work.
-- **P6 — Autonomous/Semi-Autonomous Agentic Workflows (governance spine).** The LangGraph
-  governance graph from P6's property-management donor is lifted into `src/governance/` (code
-  logic verbatim) and reused for SOC with one required fix (the multi-step plan loop must
-  dispatch back to `worker`, not `reviewer`). The same `evaluate_constraints` mechanism that
-  enforced the donor's spend cap enforces our `risk_band_score ≥ 80` human-review gate —
-  one mechanism for two domains is the reuse linchpin, asserted in `test_policy_predicate.py`.
+- **P6 — Autonomous/Semi-Autonomous Agentic Workflows (governance spine).**<sup>9</sup> 
+  The LangGraph<sup>10</sup> governance graph from P6's property-management donor is lifted 
+  into `src/governance/` (code logic verbatim) and reused for SOC with one required fix 
+  (the multi-step plan loop must dispatch back to `worker`, not `reviewer`). The same 
+  `evaluate_constraints` mechanism that enforced the donor's spend cap enforces our 
+  `risk_band_score ≥ 80` human-review gate — one mechanism for two domains is the reuse 
+  linchpin, asserted in `test_policy_predicate.py`.
 
-These compose as a pipeline: **P1 data → fusion (P3 rules) → P2 calibration check → RAG →
+These compose as a pipeline: **P1 data → fusion (P3 rules) → P2 calibration check → RAG<sup>11</sup> →
 generative summary (P5) → LangGraph agent with governance gate (P6) → human approval.**
 Integration is meaningful, not decorative: removing any layer breaks a real capability
 (fusion, policy routing, grounded summaries, or the non-bypassable escalation gate).
@@ -82,25 +84,24 @@ __start__ → ingest → planner → worker → reviewer → { worker_dispatch |
 - **Fusion** (`src/fusion/`): four detectors (`intrusion_restricted`, `repeated_denials`,
   `cross_anomaly`, `tailgate_door`), a transparent risk scorer (per-rule base + size +
   confidence, capped at 100), and incident materialization to Parquet + CSV.
-- **RAG** (`src/rag/`): 5-doc policy KB in Chroma, `all-MiniLM-L6-v2` embeddings, MMR (k=3,
-  λ=0.5) with **category routing** — the fusion layer's known `incident_type` boosts the
-  matching policy category by 0.3 before MMR, fixing shared-vocabulary mis-ranking without a
-  bigger model.
-- **Summarizer** (`src/agent/summarizer.py`): Groq `llama-3.1-8b-instant` via plain `requests`
+- **RAG** (`src/rag/`): 5-doc policy KB in Chroma<sup>12</sup>, `all-MiniLM-L6-v2`<sup>13</sup> 
+  embeddings<sup>14</sup>, MMR (k=3, λ=0.5) with **category routing** — the fusion layer's 
+  known `incident_type` boosts the matching policy category by 0.3 before MMR<sup>15</sup>, 
+  fixing shared-vocabulary mis-ranking without a bigger model.
+- **Summarizer** (`src/agent/summarizer.py`): Groq<sup>16</sup> `llama-3.1-8b-instant` via plain `requests`
   (no OpenAI SDK), with a **citation guard** (validate `KB-XXXXX` against the retrieved set,
   retry once, else `needs_review`).
 - **Agent** (`src/agent/copilot_agent.py`): governance graph wired to SOC domain; 6 tools
   (`incident.fuse/score`, `sop.retrieve`, `incident.summarize`, `incident.escalate`,
   `case.close`). Stub mode (deterministic, no key) and `--llm` mode (Groq-planned).
-- **GUI** (`src/gui/app.py`): Streamlit analyst surface reusing
+- **GUI** (`src/gui/app.py`): Streamlit<sup>17</sup> analyst surface reusing
   `run_incident_streaming` directly, with a real `interrupt()`/`Command(resume)` human-gate
   for critical escalations and optional CSV upload.
 
-A compiled topology diagram is rendered at `reports/agent_graph.png`.
 
 ### Key technical decisions
 
-- **Rules before ML** (P3). Transparent scoring with per-rule provenance; no black-box score.
+- **Rules before ML** (P3)<sup>7</sup>. Transparent scoring with per-rule provenance; no black-box score.
 - **Native Chroma + sentence-transformers**, no LangChain wrappers — a 5-doc KB does not
   justify the abstraction. Category routing fixes vocabulary overlap at the retrieval layer,
   not with a bigger embedding model.
@@ -120,13 +121,62 @@ A compiled topology diagram is rendered at `reports/agent_graph.png`.
   reads the user's incidents, not a coincidentally-matched synthetic row — a silent-data-mix
   guard.
 
+### How the blocks connect (the data flow)
+
+```mermaid
+flowchart LR
+  subgraph Data["Block 1: Generators"]
+    P1[(P1 raw parquet)] --> ADP[p1_adapter]
+    ADP --> EVT[surveillance_events.parquet]
+    ADP --> LOG[access_logs.parquet]
+  end
+
+  subgraph Fuse["Block 2: Fusion"]
+    EVT --> RULES[rules.py\n4 detectors]
+    LOG --> RULES
+    RULES --> SCORE["risk_scorer.py\ncap@100"]
+    SCORE --> INC[(incidents.parquet\nsummary/citation EMPTY)]
+  end
+
+  subgraph RAG["Block 3: RAG"]
+    KB[(KB-00001..5\npolicy docs)] --> CHROMA[(Chroma\nall-MiniLM-L6-v2)]
+    CHROMA --> RET[retrieve_for_incident\ncategory routing + MMR]
+  end
+
+  subgraph Sum["Block 4: Summarizer"]
+    RET --> GROQ[Groq llama-3.1-8b\nvia requests]
+    INC --> GROQ
+    GROQ --> GUARD[citation guard\nvalidate+retry]
+    GUARD --> INC2[(incidents.parquet\nsummary/citation FILLED)]
+  end
+
+  subgraph Agent["Block 5: Agent + Governance"]
+    INC2 --> INGEST[ingest]
+    INGEST --> PLANNER[planner]
+    PLANNER --> WORKER[worker]
+    WORKER --> REV{reviewer\npolicy gate}
+    REV -->|allow| DISP[worker_dispatch\nruns a tool]
+    REV -->|require_human| HUMAN[human_approval\ninterrupt]
+    REV -->|block| SUMN[summarizer]
+    HUMAN --> DISP
+    DISP -->|more steps| WORKER
+    DISP -->|done| SUMN
+    SUMN --> ENDX((END))
+  end
+
+  classDef store fill:#e8f0fe,stroke:#1a73e8
+  classDef gate fill:#fce8e6,stroke:#d93025
+  class P1,EVT,LOG,INC,INC2,KB,CHROMA store
+  class REV,HUMAN gate
+```
+
 ### Assumptions and tradeoffs
 
 Stub mode is reproducible; `--llm` mode is not (Groq generates the plan and may skip steps —
 acceptable, since the summarizer tool retrieves policies internally so citations still land).
 The Groq free tier caps scale; the scaled slice (226 incidents) is the rubric default, with a
 small slice (4 incidents) kept for fast iteration. ML is deferred to keep the rule layer
-auditable and to respect P3 leakage discipline.
+auditable and to respect P3<sup>7</sup> leakage discipline.
 
 ### Boundaries of capability and responsibility
 
@@ -211,14 +261,28 @@ compresses signal and cites its sources; the human makes the call.
 
 ## 7. References
 
-1. National Institute of Standards and Technology. *Computer Security Incident Handling
-   Guide*, NIST SP 800-61 Revision 2. NIST, 2012.
-2. ENISA (European Union Agency for Cybersecurity). *Strategies for incident response and
-   cyber crisis operations*. ENISA, 2020.
-3. JPCERT/CC. *Computer Security Incident Response Guidelines*. JPCERT Coordination Center.
-4. LangGraph documentation — LangChain, Inc. Stateful, multi-actor agent orchestration.
+1. Orca - Potentially Personal Identifying Information found
+   https://orca.security/resources/blog/data-at-risk-personal-identifying-information-email-address-found/
+2. Capstone Project 1 - https://github.com/Soliman2020/master_capstone_01
+3. Apache (2019). parquet-format https://github.com/apache/parquet-format/
+4. Capstone Project 2 - https://github.com/Soliman2020/master_capstone_02
+5. McHugh, Mary (2013). The Chi-square test of independence https://pmc.ncbi.nlm.nih.gov/articles/PMC3900058/
+6. Ruxton, G. D. (2006). The unequal variance t-test is an underused alternative to Student's t-test and the Mann–Whitney U test. Behavioral Ecology, 17(4), 688–690. https://academic.oup.com/beheco/article-abstract/17/4/688/215960
+7. Capstone Project 3 - https://github.com/Soliman2020/master_capstone_03
+8. Capstone Project 5 - https://github.com/Soliman2020/master_capstone_05
+9. Capstone Project 6 - https://github.com/Soliman2020/master_capstone_06
+10. LangGraph documentation — LangChain, Inc. Stateful, multi-actor agent orchestration.
    https://langchain-ai.github.io/langgraph/
-5. Groq Cloud API documentation — Groq, Inc. Llama 3.1 model API reference.
+11. Lewis, P., Perez, E., Piktus, & others (2020). Retrieval-Augmented Generation for Knowledge-Intensive NLP Tasks. arXiv:2005.11401
+https://proceedings.neurips.cc/paper/2020/file/6b493230205f780e1bc26945df7481e5-Paper.pdf
+12. chromadb - Chroma https://www.trychroma.com/products/chromadb
+13. Hugging Face (2021). sentence-transformers/all-MiniLM-L6-v2 model
+  https://huggingface.co/sentence-transformers/all-MiniLM-L6-v2
+14. Reimers, N. & Gurevych, I. (2019). Sentence-BERT: Sentence Embeddings using Siamese
+   BERT-Networks. https://aclanthology.org/D19-1410/
+15. Carbonell, James & Goldstein, Jade (1998). **The Use of MMR, Diversity-Based Reranking** 
+   **for Reordering Documents and Producing Summaries**  
+   https://www.cs.cmu.edu/~jgc/publication/The_Use_MMR_Diversity_Based_LTMIR_1998.pdf
+16. Groq Cloud API documentation — Groq, Inc. Llama 3.1 model API reference.
    https://console.groq.com/docs
-6. Reimers, N. & Gurevych, I. (2019). *Sentence-BERT: Sentence Embeddings using Siamese
-   BERT-Networks.* EMNLP. (scholarly source — embedding model `all-MiniLM-L6-v2`.)
+17. Streamlit https://streamlit.io/
