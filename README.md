@@ -114,6 +114,12 @@ project_07_final_synthesis\final_venv\Scripts\python.exe project_07_final_synthe
 ```
 Then open `notebooks/07_integrated_copilot.ipynb` in JupyterLab.
 
+There's a second, **self-contained companion notebook**: `notebooks/full_copilot.ipynb`. It inlines every module (generators → fusion → RAG → summarizer → governance-gated agent) with **no `from src...` imports**, so a reviewer can trace the whole system top-to-bottom in one file. Rebuild it with:
+```powershell
+project_07_final_synthesis\final_venv\Scripts\python.exe project_07_final_synthesis\scripts\build_full_notebook.py
+```
+Same behavior as the rubric notebook, different altitude — it runs the small slice by default and includes the §2b P2→P7 calibration section. It runs in LLM mode when `GROQ_API_KEY` is set (non-deterministic: the citation guard may return `ok` or `needs_review`, both correct) and falls back to deterministic stub mode with no key.
+
 To launch the **Streamlit analyst GUI** (one command, runs in your browser):
 ```powershell
 project_07_final_synthesis\final_venv\Scripts\python.exe -m streamlit run project_07_final_synthesis\src\gui\app.py
@@ -133,7 +139,8 @@ project_07_final_synthesis/
 │   ├── synthetic/                          # deterministic Parquet + CSV outputs (project corpus)
 │   └── uploads/                            # per-session CSV uploads (data/uploads/{uuid}/)
 ├── notebooks/
-│   └── 07_integrated_copilot.ipynb         # rubric submission (30 cells)
+│   ├── 07_integrated_copilot.ipynb         # rubric submission (30 cells, runs the scaled P1 slice via `from src...`)
+│   └── full_copilot.ipynb                  # self-contained companion: the whole system inlined, no `from src...` imports (53 cells)
 ├── src/
 │   ├── generators/                         # reference_data + surveillance_events + access_logs + p1_pipeline
 │   ├── fusion/                             # rules + risk_scorer + incidents (4 detectors)
@@ -212,13 +219,14 @@ The fusion layer is four transparent rules with per-rule provenance (`_rule` col
 
 ## Files of interest
 
-If you have 30 minutes for a code tour, open these five files in this order. Everything else is supporting infrastructure.
+If you have 30 minutes for a code tour, open these six files in this order. Everything else is supporting infrastructure.
 
 1. **`notebooks/07_integrated_copilot.ipynb`** — the rubric submission. 30 cells, Restart & Run All clean. This is the system's behaviour in one document.
-2. **`src/governance/graph_builder.py`** — the lifted P6 LangGraph spine, with the one `FIX` comment for the plan-loop dispatch. The P6 → P7 reuse story lives here.
-3. **`src/agent/summarizer.py`** — the citation guard. The whole "free 8B model is safe" claim is in `summarize_incident()`.
-4. **`src/rag/retriever.py`** — category routing + MMR. The whole "5-doc KB doesn't pay for a bigger stack" claim is in `INCIDENT_TYPE_TO_CATEGORY` and `_mmr_rerank()`.
-5. **`tests/test_threshold_calibration.py`** — the P2 → P7 calibration contract. The recall@0.85 = 58% hard finding is asserted here, not buried in a notebook.
+2. **`notebooks/full_copilot.ipynb`** — the self-contained companion. 53 cells, no `from src...` imports — every module inlined in build order under six banner headers (Generate data → Fusion → RAG → Summarizer → Governance & Agent → Run). Read this when you want to understand the system, not just watch it run.
+3. **`src/governance/graph_builder.py`** — the lifted P6 LangGraph spine, with the one `FIX` comment for the plan-loop dispatch. The P6 → P7 reuse story lives here.
+4. **`src/agent/summarizer.py`** — the citation guard. The whole "free 8B model is safe" claim is in `summarize_incident()`.
+5. **`src/rag/retriever.py`** — category routing + MMR. The whole "5-doc KB doesn't pay for a bigger stack" claim is in `INCIDENT_TYPE_TO_CATEGORY` and `_mmr_rerank()`.
+6. **`tests/test_threshold_calibration.py`** — the P2 → P7 calibration contract. The recall@0.85 = 58% hard finding is asserted here, not buried in a notebook.
 
 ---
 
