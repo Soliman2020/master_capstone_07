@@ -133,32 +133,32 @@ Pick an incident in the sidebar, press **▶ Run copilot**. Critical-band incide
 ```
 project_07_final_synthesis/
 ├── data/
-│   ├── reference/                          # sites, zones, devices, users (shared seed data)
-│   ├── operational/                        # surveillance_events, access_logs, incidents
-│   ├── knowledge_base/                     # JSONL policies + Chroma vector store
-│   ├── synthetic/                          # deterministic Parquet + CSV outputs (project corpus)
-│   └── uploads/                            # per-session CSV uploads (data/uploads/{uuid}/)
+│   ├── reference/                                 # sites, zones, devices, users (shared seed data)
+│   ├── operational/                               # surveillance_events, access_logs, incidents
+│   ├── knowledge_base/                            # JSONL policies + Chroma vector store
+│   ├── synthetic/                                 # deterministic Parquet + CSV outputs (project corpus)
+│   └── uploads/                                   # per-session CSV uploads (data/uploads/{uuid}/)
 ├── notebooks/
-│   ├── 07_integrated_copilot.ipynb         # rubric submission (30 cells, runs the scaled P1 slice via `from src...`)
-│   └── full_copilot.ipynb                  # self-contained companion: the whole system inlined, no `from src...` imports (53 cells)
+│   ├── 07_integrated_copilot.ipynb                 # rubric submission (30 cells, runs the scaled P1 slice via `from src...`)
+│   └── full_copilot.ipynb                          # self-contained companion: the whole system inlined, no `from src...` imports (53 cells)
 ├── src/
-│   ├── generators/                         # reference_data + surveillance_events + access_logs + p1_pipeline
-│   ├── fusion/                             # rules + risk_scorer + incidents (4 detectors)
-│   ├── rag/                                # knowledge_base_loader + retriever (MMR + category routing)
-│   ├── agent/                              # copilot_agent + summarizer (Groq adapter)
-│   ├── governance/                         # lifted from P6 donor (graph_builder, policy, audit, ...)
-│   ├── domain/                             # SOC-specific (policy.yaml, tools, intake, prompts)
-│   ├── gui/                                # Streamlit analyst GUI (one-file app)
-│   ├── schema.py                           # dataclasses + INCIDENTS_COLS etc.
-│   └── utils/                              # constants (SEED=42), io, p1_adapter, upload_adapter
-├── tests/                                  # 34 tests: governance + policy + escalate + threshold + upload-adapter
+│   ├── generators/                                 # reference_data + surveillance_events + access_logs + p1_pipeline
+│   ├── fusion/                                     # rules + risk_scorer + incidents (4 detectors)
+│   ├── rag/                                        # knowledge_base_loader + retriever (MMR + category routing)
+│   ├── agent/                                      # copilot_agent + summarizer (Groq adapter)
+│   ├── governance/                                 # lifted from P6 donor (graph_builder, policy, audit, ...)
+│   ├── domain/                                     # SOC-specific (policy.yaml, tools, intake, prompts)
+│   ├── gui/                                        # Streamlit analyst GUI (one-file app)
+│   ├── schema.py                                   # dataclasses + INCIDENTS_COLS etc.
+│   └── utils/                                      # constants (SEED=42), io, p1_adapter, upload_adapter
+├── tests/                                          # 34 tests: governance + policy + escalate + threshold + upload-adapter
 ├── reports/
-│   ├── agent_graph.png                     # compiled LangGraph topology
+│   ├── agent_graph.png                             # compiled LangGraph topology
 │   └── Reflective_Synthesis_Paper.pdf
-│   └── Reflective_Synthesis_Paper.md
-├── final_venv/                             # pinned venv (see requirements.txt for the exact freeze)
-├── requirements.txt                        # pip freeze of final_venv (+ streamlit 1.59.2 stack)
-└── README.md                               # this file
+│   └── Professional_Industry_Defense_Deck.pptx     # A final mentor presentation and live defense
+├── final_venv/                                     # pinned venv (see requirements.txt for the exact freeze)
+├── requirements.txt                                # pip freeze of final_venv (+ streamlit 1.59.2 stack)
+└── README.md                                       # this file
 ```
 
 ---
