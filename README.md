@@ -81,7 +81,7 @@ The agent's audit log is hash-chained JSONL; every tool call, reviewer verdict, 
 
 **Optional analyst front-end:** the same `run_incident_streaming` entry point is reused by `src/gui/app.py` (Streamlit). The GUI surfaces the same audit chain, the same human-approval gate as a real Grant/Deny button, and an optional "📁 Upload your data" path: drop in two CSVs in any schema, map the columns and enum values via the GUI's `data_editor` widgets, and the copilot runs on the analyst's own data instead of the project corpus. Uploads live in `data/uploads/{uuid}/` and never touch the project's `data/synthetic/` parquet.
 
-!["GUI DEMO"](https://github.com/user-attachments/assets/1ebda19f-543e-4193-9cd2-cfc8f9187b46)
+![](https://github.com/user-attachments/assets/1ebda19f-543e-4193-9cd2-cfc8f9187b46)
 
 ---
 
