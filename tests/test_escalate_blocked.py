@@ -1,7 +1,7 @@
 """SOC equivalent of the property-management eviction-blocked test.
 
 Asserts the non-bypassable policy gate blocks a low-risk escalation:
-incident.escalate with risk_band_score < 75 must be blocked (fail closed),
+incident.escalate with risk_band_score < 80 must be blocked (fail closed),
 and the tool must NOT run. This is the human-in-the-loop safety rule —
 critical-band escalation is the only path that can reach dispatch, and only
 after human approval. A high-band incident asking to escalate is refused.
@@ -39,9 +39,9 @@ def _intake_with_plan(plan):
 
 
 def test_escalate_high_band_is_blocked():
-    """An escalation with risk_band_score=64 (< 75) must NOT reach the tool.
+    """An escalation with risk_band_score=64 (< 80) must NOT reach the tool.
 
-    The reviewer's constraint check (risk_band_score: {ge: 75}) fails, the
+    The reviewer's constraint check (risk_band_score: {ge: 80}) fails, the
     route is 'block', and the tool never runs. The dispatched tool would
     record escalated=True only if it ran; we assert it did not.
     """
@@ -89,7 +89,7 @@ def test_escalate_high_band_is_blocked():
 
 
 def test_escalate_critical_band_requires_human():
-    """A critical-band escalation (risk_band_score=82 >= 75) is allowed but
+    """A critical-band escalation (risk_band_score=82 >= 80) is allowed but
     routed through human_approval (require_human). In demo mode human_approval
     auto-approves, so the tool runs — but only after the human node, never
     straight from the reviewer. This is the human-in-the-loop gate.

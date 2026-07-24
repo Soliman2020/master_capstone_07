@@ -148,17 +148,22 @@ def incident_summarize(incident_id: str) -> dict:
 def incident_escalate(incident_id: str, risk_band_score: int) -> dict:
     """Escalate a critical incident for human response.
 
-    Side-effect tool: the policy requires risk_band_score >= 75 AND a human
+    Side-effect tool: the policy requires risk_band_score >= 80 AND a human
     approval. This tool records the escalation intent; a production deployment
     would page the duty manager here. In the slice it returns the escalation
     record so the audit trail + summarizer can cite it.
+
+    The 80 cutoff MUST match risk_scorer._band (critical >= 80) and
+    policy.yaml's risk_band_score: {ge: 80}. CLAUDE.md "Guardrails and
+    gotchas" calls this out: "Keep the risk threshold aligned at 80 across
+    scorer, policy, and tests."
     """
     row = _incident_row(incident_id)
     return {
         "incident_id": incident_id,
         "risk_band_score": risk_band_score,
         "risk_band": row["risk_band"],
-        "escalated": risk_band_score >= 75,
+        "escalated": risk_band_score >= 80,
         "action": "page_duty_manager",
         "note": "Escalation recorded; awaiting human approval (demo auto-approves).",
     }
